@@ -1,6 +1,6 @@
-import QRCode from 'qrcode';
+const QRCode = require('qrcode');
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
     // Enable CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -36,6 +36,6 @@ export default async function handler(req, res) {
         });
     } catch (error) {
         console.error('QR generation error:', error);
-        res.status(500).json({ error: 'Failed to generate QR code' });
+        res.status(500).json({ error: 'Failed to generate QR code', details: error.message });
     }
-}
+};

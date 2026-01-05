@@ -1,10 +1,10 @@
 // In-memory session storage for Vercel serverless functions
-// Note: This is ephemeral and will reset between deployments
+// Note: This is ephemeral and will reset between cold starts
 // For production, use a database like Supabase, Redis, or Vercel KV
 
 const sessions = new Map();
 
-export function getSession(sessionId) {
+function getSession(sessionId) {
     if (!sessions.has(sessionId)) {
         sessions.set(sessionId, {
             images: [],
@@ -14,7 +14,7 @@ export function getSession(sessionId) {
     return sessions.get(sessionId);
 }
 
-export function addImage(sessionId, imageData) {
+function addImage(sessionId, imageData) {
     const session = getSession(sessionId);
     const image = {
         id: `img-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -25,11 +25,13 @@ export function addImage(sessionId, imageData) {
     return image;
 }
 
-export function getImages(sessionId) {
+function getImages(sessionId) {
     const session = getSession(sessionId);
     return session.images;
 }
 
-export function clearSession(sessionId) {
+function clearSession(sessionId) {
     sessions.delete(sessionId);
 }
+
+module.exports = { getSession, addImage, getImages, clearSession };

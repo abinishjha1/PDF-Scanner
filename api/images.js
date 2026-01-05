@@ -1,14 +1,6 @@
-import { addImage, getImages } from './_lib/sessions.js';
+const { addImage, getImages } = require('./_lib/sessions.js');
 
-export const config = {
-    api: {
-        bodyParser: {
-            sizeLimit: '10mb',
-        },
-    },
-};
-
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
     // Enable CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -44,7 +36,7 @@ export default async function handler(req, res) {
             });
         } catch (error) {
             console.error('Upload error:', error);
-            res.status(500).json({ error: 'Failed to upload image' });
+            res.status(500).json({ error: 'Failed to upload image', details: error.message });
         }
     } else if (req.method === 'GET') {
         // Get all images for session
@@ -59,9 +51,17 @@ export default async function handler(req, res) {
             });
         } catch (error) {
             console.error('Fetch error:', error);
-            res.status(500).json({ error: 'Failed to fetch images' });
+            res.status(500).json({ error: 'Failed to fetch images', details: error.message });
         }
     } else {
         res.status(405).json({ error: 'Method not allowed' });
     }
-}
+};
+
+module.exports.config = {
+    api: {
+        bodyParser: {
+            sizeLimit: '10mb',
+        },
+    },
+};
