@@ -1,5 +1,5 @@
-// PDF Scanner - Mobile Camera JavaScript
-// Handles camera access, image capture, and upload to server
+// PDF Scanner - Mobile Camera JavaScript (Vercel version)
+// Handles camera access, image capture, and upload to API
 
 class MobileScanner {
     constructor() {
@@ -90,8 +90,8 @@ class MobileScanner {
         const ctx = canvas.getContext('2d');
         ctx.drawImage(video, 0, 0);
 
-        // Convert to data URL
-        this.capturedImageData = canvas.toDataURL('image/jpeg', 0.9);
+        // Convert to data URL (compressed for upload)
+        this.capturedImageData = canvas.toDataURL('image/jpeg', 0.8);
 
         // Show preview
         previewImage.src = this.capturedImageData;
@@ -129,21 +129,18 @@ class MobileScanner {
         uploadToast.classList.add('active');
 
         try {
-            // Convert base64 to blob
-            const response = await fetch(this.capturedImageData);
-            const blob = await response.blob();
-
-            // Create form data
-            const formData = new FormData();
-            formData.append('image', blob, `capture-${Date.now()}.jpg`);
-
-            // Upload to server
-            const uploadResponse = await fetch(`/api/upload/${this.sessionId}`, {
+            // Upload to API as JSON
+            const response = await fetch(`/api/images?sessionId=${this.sessionId}`, {
                 method: 'POST',
-                body: formData
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    imageData: this.capturedImageData
+                })
             });
 
-            if (!uploadResponse.ok) {
+            if (!response.ok) {
                 throw new Error('Upload failed');
             }
 
@@ -198,12 +195,10 @@ class MobileScanner {
         // Handle page visibility change (pause/resume camera)
         document.addEventListener('visibilitychange', () => {
             if (document.hidden) {
-                // Pause camera when page is hidden
                 if (this.stream) {
                     this.stream.getTracks().forEach(track => track.enabled = false);
                 }
             } else {
-                // Resume camera when page is visible
                 if (this.stream) {
                     this.stream.getTracks().forEach(track => track.enabled = true);
                 }

@@ -1,12 +1,13 @@
-// PDF Scanner - Desktop Main JavaScript
-// Handles QR generation, WebSocket connection, gallery, and PDF generation
+// PDF Scanner - Desktop Main JavaScript (Vercel version with polling)
+// Handles QR generation, polling for updates, gallery, and PDF generation
 
 class PDFScanner {
     constructor() {
         this.sessionId = this.generateSessionId();
         this.images = [];
-        this.ws = null;
         this.selectedImageId = null;
+        this.pollingInterval = null;
+        this.lastImageCount = 0;
 
         this.init();
     }
@@ -17,7 +18,7 @@ class PDFScanner {
 
     async init() {
         await this.fetchQRCode();
-        this.connectWebSocket();
+        this.startPolling();
         this.bindEvents();
     }
 
@@ -26,7 +27,7 @@ class PDFScanner {
         const mobileUrl = document.getElementById('mobile-url');
 
         try {
-            const response = await fetch(`/api/qrcode/${this.sessionId}`);
+            const response = await fetch(`/api/qrcode?sessionId=${this.sessionId}`);
             const data = await response.json();
 
             if (data.qrCode) {
@@ -43,61 +44,33 @@ class PDFScanner {
         }
     }
 
-    connectWebSocket() {
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}?session=${this.sessionId}`;
+    startPolling() {
+        // Poll every 2 seconds for new images
+        this.pollingInterval = setInterval(() => this.pollImages(), 2000);
+        // Initial poll
+        this.pollImages();
+    }
 
-        this.ws = new WebSocket(wsUrl);
+    async pollImages() {
+        try {
+            const response = await fetch(`/api/images?sessionId=${this.sessionId}`);
+            const data = await response.json();
 
-        this.ws.onopen = () => {
-            this.updateConnectionStatus(true);
-        };
-
-        this.ws.onclose = () => {
-            this.updateConnectionStatus(false);
-            // Attempt to reconnect after 3 seconds
-            setTimeout(() => this.connectWebSocket(), 3000);
-        };
-
-        this.ws.onerror = (error) => {
-            console.error('WebSocket error:', error);
-        };
-
-        this.ws.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-
-            if (data.type === 'init') {
-                // Load existing images
-                data.images.forEach(image => this.addImage(image));
-            } else if (data.type === 'new-image') {
-                // Add new image
-                this.addImage(data.image);
-                this.showNotification('New image received!');
+            if (data.images && data.images.length > this.lastImageCount) {
+                // New images received
+                this.images = data.images;
+                this.lastImageCount = data.images.length;
+                this.renderGallery();
+                this.updateControls();
             }
-        };
-    }
-
-    updateConnectionStatus(connected) {
-        const statusText = document.getElementById('connection-status');
-        const statusDot = document.querySelector('.status-dot');
-
-        if (connected) {
-            statusText.textContent = 'Connected';
-            statusDot.classList.add('connected');
-        } else {
-            statusText.textContent = 'Reconnecting...';
-            statusDot.classList.remove('connected');
+        } catch (error) {
+            console.error('Polling error:', error);
         }
-    }
-
-    addImage(image) {
-        this.images.push(image);
-        this.renderGallery();
-        this.updateControls();
     }
 
     removeImage(imageId) {
         this.images = this.images.filter(img => img.id !== imageId);
+        this.lastImageCount = this.images.length;
         this.renderGallery();
         this.updateControls();
         this.closeModal();
@@ -106,6 +79,7 @@ class PDFScanner {
     clearAllImages() {
         if (confirm('Are you sure you want to clear all images?')) {
             this.images = [];
+            this.lastImageCount = 0;
             this.renderGallery();
             this.updateControls();
         }
@@ -128,7 +102,7 @@ class PDFScanner {
 
         galleryGrid.innerHTML = this.images.map((image, index) => `
       <div class="gallery-item fade-in" data-id="${image.id}">
-        <img src="${image.url}" alt="Captured document ${index + 1}" loading="lazy">
+        <img src="${image.data}" alt="Captured document ${index + 1}" loading="lazy">
         <div class="gallery-item-overlay">
           <div class="gallery-item-number">${index + 1}</div>
         </div>
@@ -157,7 +131,7 @@ class PDFScanner {
         const modalImage = document.getElementById('modal-image');
 
         this.selectedImageId = image.id;
-        modalImage.src = image.url;
+        modalImage.src = image.data;
         modal.classList.add('active');
     }
 
@@ -200,10 +174,8 @@ class PDFScanner {
 
                 const image = this.images[i];
 
-                // Load image and add to PDF
                 try {
-                    const imgData = await this.loadImageAsBase64(image.url);
-                    const imgProps = await this.getImageDimensions(image.url);
+                    const imgProps = await this.getImageDimensions(image.data);
 
                     // Calculate dimensions to fit page
                     const maxWidth = pageWidth - (margin * 2);
@@ -221,7 +193,7 @@ class PDFScanner {
                     const x = (pageWidth - width) / 2;
                     const y = (pageHeight - height) / 2;
 
-                    doc.addImage(imgData, 'JPEG', x, y, width, height);
+                    doc.addImage(image.data, 'JPEG', x, y, width, height);
                 } catch (error) {
                     console.error(`Failed to add image ${i + 1}:`, error);
                 }
@@ -231,7 +203,6 @@ class PDFScanner {
             const timestamp = new Date().toISOString().slice(0, 10);
             doc.save(`scanned-document-${timestamp}.pdf`);
 
-            this.showNotification('PDF generated successfully!');
         } catch (error) {
             console.error('PDF generation error:', error);
             alert('Failed to generate PDF: ' + error.message);
@@ -241,37 +212,15 @@ class PDFScanner {
         }
     }
 
-    loadImageAsBase64(url) {
-        return new Promise((resolve, reject) => {
-            const img = new Image();
-            img.crossOrigin = 'anonymous';
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                canvas.width = img.width;
-                canvas.height = img.height;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0);
-                resolve(canvas.toDataURL('image/jpeg', 0.9));
-            };
-            img.onerror = reject;
-            img.src = url;
-        });
-    }
-
-    getImageDimensions(url) {
+    getImageDimensions(dataUrl) {
         return new Promise((resolve, reject) => {
             const img = new Image();
             img.onload = () => {
                 resolve({ width: img.width, height: img.height });
             };
             img.onerror = reject;
-            img.src = url;
+            img.src = dataUrl;
         });
-    }
-
-    showNotification(message) {
-        // Simple notification - could be enhanced with a toast library
-        console.log(message);
     }
 
     bindEvents() {
@@ -305,6 +254,13 @@ class PDFScanner {
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
                 this.closeModal();
+            }
+        });
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (this.pollingInterval) {
+                clearInterval(this.pollingInterval);
             }
         });
     }
