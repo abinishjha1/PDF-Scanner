@@ -1,17 +1,12 @@
 // PDF Scanner - Desktop Main JavaScript
-// Uses Supabase Realtime for cross-device image sync
-
-// Supabase configuration
-const SUPABASE_URL = 'https://pntieelizxhmezasqzed.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_UXZ8961wiUjnY5zRVGwymg__2twvxum';
+// Uses localStorage polling for cross-device image sync
 
 class PDFScanner {
     constructor() {
         this.sessionId = this.generateSessionId();
         this.images = [];
         this.selectedImageId = null;
-        this.supabase = null;
-        this.channel = null;
+        this.pollInterval = null;
 
         this.init();
     }
@@ -21,27 +16,13 @@ class PDFScanner {
     }
 
     async init() {
-        // Initialize Supabase
-        this.initSupabase();
-
         // Generate QR code client-side
         await this.generateQRCode();
 
-        // Setup real-time sync
-        this.setupRealtimeSync();
+        // Setup polling for images
+        this.setupPolling();
 
         this.bindEvents();
-    }
-
-    initSupabase() {
-        if (typeof supabase !== 'undefined' && supabase.createClient) {
-            try {
-                this.supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-                console.log('Supabase initialized');
-            } catch (err) {
-                console.warn('Supabase init failed, using localStorage fallback:', err);
-            }
-        }
     }
 
     async generateQRCode() {
@@ -49,25 +30,20 @@ class PDFScanner {
         const mobileUrlElement = document.getElementById('mobile-url');
 
         try {
-            // Generate mobile URL
             const baseUrl = window.location.origin;
             const mobileUrl = `${baseUrl}/mobile.html?session=${this.sessionId}`;
 
-            // Use qrcode-generator library from CDN
             if (typeof qrcode !== 'undefined') {
                 const qr = qrcode(0, 'M');
                 qr.addData(mobileUrl);
                 qr.make();
 
-                // Create image from QR code
                 const qrImg = document.createElement('img');
                 qrImg.src = qr.createDataURL(8, 0);
                 qrImg.alt = 'Scan to connect';
                 qrImg.style.width = '240px';
                 qrImg.style.height = '240px';
                 qrImg.style.borderRadius = '12px';
-
-                // Apply white filter for dark theme
                 qrImg.style.filter = 'invert(1)';
 
                 qrContainer.innerHTML = '';
@@ -93,64 +69,49 @@ class PDFScanner {
         }
     }
 
-    setupRealtimeSync() {
-        // Try Supabase Realtime first
-        if (this.supabase) {
-            try {
-                this.channel = this.supabase.channel(`scanner:${this.sessionId}`);
-
-                this.channel
-                    .on('broadcast', { event: 'new-image' }, (payload) => {
-                        console.log('Received image via Supabase:', payload);
-                        if (payload.payload && payload.payload.image) {
-                            this.addImage(payload.payload.image, false);
-                        }
-                    })
-                    .subscribe((status) => {
-                        console.log('Supabase channel status:', status);
-                        if (status === 'SUBSCRIBED') {
-                            this.updateConnectionStatus('connected');
-                        }
-                    });
-
-                console.log('Supabase Realtime channel created');
-            } catch (err) {
-                console.warn('Supabase Realtime failed:', err);
-            }
-        }
-
-        // Also listen for localStorage events (fallback)
+    setupPolling() {
+        // Listen for storage events (cross-tab on same domain)
         window.addEventListener('storage', (e) => {
-            if (e.key === `scanner_${this.sessionId}`) {
-                try {
-                    const data = JSON.parse(e.newValue);
-                    if (data.type === 'new-image') {
-                        this.addImage(data.image, false);
-                    }
-                } catch (err) {
-                    console.error('Storage event error:', err);
-                }
+            if (e.key === `images_${this.sessionId}` || e.key === `scanner_${this.sessionId}`) {
+                console.log('Storage event received:', e.key);
+                this.loadImagesFromStorage();
             }
         });
 
-        // Poll localStorage for same-tab testing
-        this.pollInterval = setInterval(() => this.pollForImages(), 1000);
+        // Poll localStorage every 500ms for cross-device sync
+        this.pollInterval = setInterval(() => {
+            this.loadImagesFromStorage();
+        }, 500);
+
+        // Initial load
+        this.loadImagesFromStorage();
 
         this.updateConnectionStatus('connected');
     }
 
-    pollForImages() {
+    loadImagesFromStorage() {
         try {
             const stored = localStorage.getItem(`images_${this.sessionId}`);
             if (stored) {
-                const images = JSON.parse(stored);
-                if (images.length > this.images.length) {
-                    const newImages = images.slice(this.images.length);
-                    newImages.forEach(img => this.addImage(img, false));
+                const storedImages = JSON.parse(stored);
+
+                // Check if there are new images
+                if (storedImages.length > this.images.length) {
+                    const newImages = storedImages.slice(this.images.length);
+                    console.log('New images found:', newImages.length);
+
+                    newImages.forEach(img => {
+                        if (!this.images.some(existing => existing.id === img.id)) {
+                            this.images.push(img);
+                        }
+                    });
+
+                    this.renderGallery();
+                    this.updateControls();
                 }
             }
         } catch (err) {
-            console.error('Poll error:', err);
+            console.error('Load from storage error:', err);
         }
     }
 
@@ -164,21 +125,6 @@ class PDFScanner {
         } else {
             statusText.textContent = 'Connecting...';
             statusDot.classList.remove('connected');
-        }
-    }
-
-    addImage(image, save = true) {
-        // Check if image already exists
-        if (this.images.some(img => img.id === image.id)) {
-            return;
-        }
-
-        this.images.push(image);
-        this.renderGallery();
-        this.updateControls();
-
-        if (save) {
-            localStorage.setItem(`images_${this.sessionId}`, JSON.stringify(this.images));
         }
     }
 
@@ -365,9 +311,6 @@ class PDFScanner {
         window.addEventListener('beforeunload', () => {
             if (this.pollInterval) {
                 clearInterval(this.pollInterval);
-            }
-            if (this.channel) {
-                this.channel.unsubscribe();
             }
         });
     }

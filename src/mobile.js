@@ -1,9 +1,5 @@
 // PDF Scanner - Mobile Camera JavaScript
-// Uses Supabase Realtime for cross-device image sync
-
-// Supabase configuration
-const SUPABASE_URL = 'https://pntieelizxhmezasqzed.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_UXZ8961wiUjnY5zRVGwymg__2twvxum';
+// Syncs images to desktop via API polling
 
 class MobileScanner {
     constructor() {
@@ -11,8 +7,7 @@ class MobileScanner {
         this.captureCount = 0;
         this.stream = null;
         this.capturedImageData = null;
-        this.supabase = null;
-        this.channel = null;
+        this.images = [];
 
         if (!this.sessionId) {
             this.showError('Invalid session. Please scan the QR code again.');
@@ -28,41 +23,25 @@ class MobileScanner {
     }
 
     async init() {
-        // Initialize Supabase
-        this.initSupabase();
-
-        // Load existing capture count
-        this.loadCaptureCount();
+        // Load existing images
+        this.loadImages();
 
         await this.startCamera();
         this.bindEvents();
     }
 
-    initSupabase() {
-        if (typeof supabase !== 'undefined' && supabase.createClient) {
-            try {
-                this.supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-                this.channel = this.supabase.channel(`scanner:${this.sessionId}`);
-                this.channel.subscribe((status) => {
-                    console.log('Mobile channel status:', status);
-                });
-                console.log('Supabase initialized on mobile');
-            } catch (err) {
-                console.warn('Supabase init failed:', err);
-            }
-        }
-    }
-
-    loadCaptureCount() {
+    loadImages() {
         try {
             const stored = localStorage.getItem(`images_${this.sessionId}`);
             if (stored) {
-                const images = JSON.parse(stored);
-                this.captureCount = images.length;
+                this.images = JSON.parse(stored);
+                this.captureCount = this.images.length;
                 this.updateCaptureCount();
+                this.updateCapturedImagesPreview();
             }
         } catch (err) {
-            console.error('Load count error:', err);
+            console.error('Load images error:', err);
+            this.images = [];
         }
     }
 
@@ -151,59 +130,46 @@ class MobileScanner {
         this.capturedImageData = null;
     }
 
-    async saveImage() {
-        if (!this.capturedImageData) return;
+    async saveImage(imageData = null) {
+        const dataToSave = imageData || this.capturedImageData;
+        if (!dataToSave) return;
 
         const previewModal = document.getElementById('preview-modal');
         const uploadToast = document.getElementById('upload-toast');
         const successToast = document.getElementById('success-toast');
 
-        previewModal.classList.remove('active');
+        if (!imageData) {
+            previewModal.classList.remove('active');
+        }
         uploadToast.classList.add('active');
 
         try {
             const image = {
                 id: `img-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                data: this.capturedImageData,
+                data: dataToSave,
                 timestamp: Date.now()
             };
 
-            // Save to localStorage
-            let images = [];
-            try {
-                const stored = localStorage.getItem(`images_${this.sessionId}`);
-                if (stored) {
-                    images = JSON.parse(stored);
-                }
-            } catch (e) {
-                images = [];
-            }
+            // Add to local array
+            this.images.push(image);
 
-            images.push(image);
-            localStorage.setItem(`images_${this.sessionId}`, JSON.stringify(images));
+            // Save to localStorage
+            localStorage.setItem(`images_${this.sessionId}`, JSON.stringify(this.images));
 
             // Trigger storage event for cross-tab sync
-            localStorage.setItem(`scanner_${this.sessionId}`, JSON.stringify({
+            const event = JSON.stringify({
                 type: 'new-image',
-                image: image
-            }));
-
-            // Send via Supabase Realtime
-            if (this.channel) {
-                try {
-                    await this.channel.send({
-                        type: 'broadcast',
-                        event: 'new-image',
-                        payload: { image: image }
-                    });
-                    console.log('Image sent via Supabase Realtime');
-                } catch (err) {
-                    console.warn('Supabase broadcast failed:', err);
-                }
-            }
+                image: image,
+                timestamp: Date.now()
+            });
+            localStorage.setItem(`scanner_${this.sessionId}`, event);
+            // Immediately remove and set again to trigger event
+            localStorage.removeItem(`scanner_${this.sessionId}`);
+            localStorage.setItem(`scanner_${this.sessionId}`, event);
 
             this.captureCount++;
             this.updateCaptureCount();
+            this.updateCapturedImagesPreview();
 
             uploadToast.classList.remove('active');
             successToast.classList.add('active');
@@ -221,30 +187,86 @@ class MobileScanner {
         this.capturedImageData = null;
     }
 
+    async handleFileSelect(files) {
+        for (const file of files) {
+            if (file.type.startsWith('image/')) {
+                try {
+                    const dataUrl = await this.fileToDataURL(file);
+                    await this.saveImage(dataUrl);
+                } catch (err) {
+                    console.error('File read error:', err);
+                }
+            }
+        }
+    }
+
+    fileToDataURL(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+        });
+    }
+
     updateCaptureCount() {
         const countElement = document.getElementById('capture-count');
         countElement.textContent = `${this.captureCount} captured`;
     }
 
+    updateCapturedImagesPreview() {
+        const container = document.getElementById('captured-images');
+        const countSpan = document.getElementById('captured-count');
+
+        if (this.images.length > 0) {
+            container.style.display = 'block';
+            countSpan.textContent = `${this.images.length} image${this.images.length !== 1 ? 's' : ''} captured`;
+        } else {
+            container.style.display = 'none';
+        }
+    }
+
     bindEvents() {
+        // Capture button
         document.getElementById('capture-btn').addEventListener('click', () => {
             this.captureImage();
         });
 
+        // Retake button
         document.getElementById('retake-btn').addEventListener('click', () => {
             this.closePreview();
         });
 
+        // Use photo button
         document.getElementById('use-btn').addEventListener('click', () => {
             this.saveImage();
         });
 
+        // File input for gallery
+        document.getElementById('file-input').addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                this.handleFileSelect(e.target.files);
+                e.target.value = ''; // Reset input
+            }
+        });
+
+        // Done button - go back to inform user
+        document.getElementById('done-btn').addEventListener('click', () => {
+            if (this.images.length > 0) {
+                alert(`${this.images.length} image(s) captured! Check your desktop to generate PDF.`);
+            } else {
+                alert('No images captured yet. Take some photos first!');
+            }
+        });
+
+        // Retry camera button
         document.getElementById('retry-btn').addEventListener('click', () => {
             document.getElementById('camera-error').style.display = 'none';
             document.getElementById('camera-loading').style.display = 'flex';
             this.startCamera();
         });
 
+        // Handle page visibility change
         document.addEventListener('visibilitychange', () => {
             if (document.hidden) {
                 if (this.stream) {
@@ -257,12 +279,10 @@ class MobileScanner {
             }
         });
 
+        // Cleanup on page unload
         window.addEventListener('beforeunload', () => {
             if (this.stream) {
                 this.stream.getTracks().forEach(track => track.stop());
-            }
-            if (this.channel) {
-                this.channel.unsubscribe();
             }
         });
     }
