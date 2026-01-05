@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PDF Scanner - Desktop</title>
+  <link rel="stylesheet" href="src/style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="header">
+      <div class="logo">
+        <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+          <line x1="16" y1="13" x2="8" y2="13"/>
+          <line x1="16" y1="17" x2="8" y2="17"/>
+          <polyline points="10 9 9 9 8 9"/>
+        </svg>
+        <span>PDF Scanner</span>
+      </div>
+      <div class="session-info">
+        <span class="status-dot"></span>
+        <span id="connection-status">Connecting...</span>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- QR Code Section -->
+      <section class="qr-section">
+        <div class="qr-card">
+          <h2>Scan to Connect</h2>
+          <p class="qr-subtitle">Use your phone to scan this QR code and start capturing documents</p>
+          <div class="qr-container" id="qr-container">
+            <div class="qr-loading">
+              <div class="spinner"></div>
+              <span>Generating QR Code...</span>
+            </div>
+          </div>
+          <p class="mobile-url" id="mobile-url"></p>
+        </div>
+      </section>
+
+      <!-- Image Gallery Section -->
+      <section class="gallery-section">
+        <div class="gallery-header">
+          <h2>Captured Images</h2>
+          <span class="image-count" id="image-count">0 images</span>
+        </div>
+        
+        <div class="gallery-container" id="gallery-container">
+          <div class="gallery-empty" id="gallery-empty">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+              <circle cx="8.5" cy="8.5" r="1.5"/>
+              <polyline points="21 15 16 10 5 21"/>
+            </svg>
+            <p>No images yet</p>
+            <span>Scan the QR code with your phone to start capturing</span>
+          </div>
+          <div class="gallery-grid" id="gallery-grid"></div>
+        </div>
+
+        <!-- PDF Controls -->
+        <div class="pdf-controls" id="pdf-controls" style="display: none;">
+          <button class="btn btn-secondary" id="clear-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+            </svg>
+            Clear All
+          </button>
+          <button class="btn btn-primary" id="generate-pdf-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            Generate PDF
+          </button>
+        </div>
+      </section>
+    </main>
+
+    <!-- Image Preview Modal -->
+    <div class="modal" id="image-modal">
+      <div class="modal-overlay"></div>
+      <div class="modal-content">
+        <button class="modal-close" id="modal-close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+        <img id="modal-image" src="" alt="Preview">
+        <div class="modal-actions">
+          <button class="btn btn-danger" id="delete-image-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+            </svg>
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- jsPDF CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
