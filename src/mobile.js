@@ -1,5 +1,9 @@
 // PDF Scanner - Mobile Camera JavaScript
-// Handles camera access, image capture, and sync via localStorage
+// Uses Supabase Realtime for cross-device image sync
+
+// Supabase configuration
+const SUPABASE_URL = 'https://pntieelizxhmezasqzed.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_UXZ8961wiUjnY5zRVGwymg__2twvxum';
 
 class MobileScanner {
     constructor() {
@@ -7,6 +11,8 @@ class MobileScanner {
         this.captureCount = 0;
         this.stream = null;
         this.capturedImageData = null;
+        this.supabase = null;
+        this.channel = null;
 
         if (!this.sessionId) {
             this.showError('Invalid session. Please scan the QR code again.');
@@ -22,11 +28,29 @@ class MobileScanner {
     }
 
     async init() {
+        // Initialize Supabase
+        this.initSupabase();
+
         // Load existing capture count
         this.loadCaptureCount();
 
         await this.startCamera();
         this.bindEvents();
+    }
+
+    initSupabase() {
+        if (typeof supabase !== 'undefined' && supabase.createClient) {
+            try {
+                this.supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+                this.channel = this.supabase.channel(`scanner:${this.sessionId}`);
+                this.channel.subscribe((status) => {
+                    console.log('Mobile channel status:', status);
+                });
+                console.log('Supabase initialized on mobile');
+            } catch (err) {
+                console.warn('Supabase init failed:', err);
+            }
+        }
     }
 
     loadCaptureCount() {
@@ -49,7 +73,6 @@ class MobileScanner {
         const captureBtn = document.getElementById('capture-btn');
 
         try {
-            // Request camera with rear-facing preference for document scanning
             this.stream = await navigator.mediaDevices.getUserMedia({
                 video: {
                     facingMode: { ideal: 'environment' },
@@ -98,22 +121,17 @@ class MobileScanner {
         const previewModal = document.getElementById('preview-modal');
         const previewImage = document.getElementById('preview-image');
 
-        // Set canvas size to video size
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
 
-        // Draw video frame to canvas
         const ctx = canvas.getContext('2d');
         ctx.drawImage(video, 0, 0);
 
-        // Convert to data URL (compressed for storage)
         this.capturedImageData = canvas.toDataURL('image/jpeg', 0.7);
 
-        // Show preview
         previewImage.src = this.capturedImageData;
         previewModal.classList.add('active');
 
-        // Flash effect
         this.showFlash();
     }
 
@@ -140,19 +158,17 @@ class MobileScanner {
         const uploadToast = document.getElementById('upload-toast');
         const successToast = document.getElementById('success-toast');
 
-        // Close preview and show upload toast
         previewModal.classList.remove('active');
         uploadToast.classList.add('active');
 
         try {
-            // Create image object
             const image = {
                 id: `img-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                 data: this.capturedImageData,
                 timestamp: Date.now()
             };
 
-            // Get existing images from localStorage
+            // Save to localStorage
             let images = [];
             try {
                 const stored = localStorage.getItem(`images_${this.sessionId}`);
@@ -163,19 +179,29 @@ class MobileScanner {
                 images = [];
             }
 
-            // Add new image
             images.push(image);
-
-            // Save to localStorage
             localStorage.setItem(`images_${this.sessionId}`, JSON.stringify(images));
 
-            // Trigger storage event for cross-tab sync (on same origin)
+            // Trigger storage event for cross-tab sync
             localStorage.setItem(`scanner_${this.sessionId}`, JSON.stringify({
                 type: 'new-image',
                 image: image
             }));
 
-            // Success
+            // Send via Supabase Realtime
+            if (this.channel) {
+                try {
+                    await this.channel.send({
+                        type: 'broadcast',
+                        event: 'new-image',
+                        payload: { image: image }
+                    });
+                    console.log('Image sent via Supabase Realtime');
+                } catch (err) {
+                    console.warn('Supabase broadcast failed:', err);
+                }
+            }
+
             this.captureCount++;
             this.updateCaptureCount();
 
@@ -201,29 +227,24 @@ class MobileScanner {
     }
 
     bindEvents() {
-        // Capture button
         document.getElementById('capture-btn').addEventListener('click', () => {
             this.captureImage();
         });
 
-        // Retake button
         document.getElementById('retake-btn').addEventListener('click', () => {
             this.closePreview();
         });
 
-        // Use photo button
         document.getElementById('use-btn').addEventListener('click', () => {
             this.saveImage();
         });
 
-        // Retry camera button
         document.getElementById('retry-btn').addEventListener('click', () => {
             document.getElementById('camera-error').style.display = 'none';
             document.getElementById('camera-loading').style.display = 'flex';
             this.startCamera();
         });
 
-        // Handle page visibility change (pause/resume camera)
         document.addEventListener('visibilitychange', () => {
             if (document.hidden) {
                 if (this.stream) {
@@ -236,10 +257,12 @@ class MobileScanner {
             }
         });
 
-        // Cleanup on page unload
         window.addEventListener('beforeunload', () => {
             if (this.stream) {
                 this.stream.getTracks().forEach(track => track.stop());
+            }
+            if (this.channel) {
+                this.channel.unsubscribe();
             }
         });
     }

@@ -1,9 +1,9 @@
 // PDF Scanner - Desktop Main JavaScript
-// Uses Supabase for real-time image sync and client-side QR generation
+// Uses Supabase Realtime for cross-device image sync
 
-// Supabase config - will be loaded from environment or inline
-const SUPABASE_URL = 'https://placeholder.supabase.co';
-const SUPABASE_ANON_KEY = 'placeholder_key';
+// Supabase configuration
+const SUPABASE_URL = 'https://pntieelizxhmezasqzed.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_UXZ8961wiUjnY5zRVGwymg__2twvxum';
 
 class PDFScanner {
     constructor() {
@@ -21,13 +21,27 @@ class PDFScanner {
     }
 
     async init() {
+        // Initialize Supabase
+        this.initSupabase();
+
         // Generate QR code client-side
         await this.generateQRCode();
 
-        // Try to setup Supabase realtime, fall back to localStorage polling
+        // Setup real-time sync
         this.setupRealtimeSync();
 
         this.bindEvents();
+    }
+
+    initSupabase() {
+        if (typeof supabase !== 'undefined' && supabase.createClient) {
+            try {
+                this.supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+                console.log('Supabase initialized');
+            } catch (err) {
+                console.warn('Supabase init failed, using localStorage fallback:', err);
+            }
+        }
     }
 
     async generateQRCode() {
@@ -66,29 +80,52 @@ class PDFScanner {
             }
         } catch (error) {
             console.error('QR generation error:', error);
+            const baseUrl = window.location.origin;
             qrContainer.innerHTML = `
         <div class="qr-error">
           <p>QR Code</p>
           <p style="font-size: 0.75rem; margin-top: 8px; word-break: break-all;">
-            ${window.location.origin}/mobile.html?session=${this.sessionId}
+            ${baseUrl}/mobile.html?session=${this.sessionId}
           </p>
         </div>
       `;
-            mobileUrlElement.textContent = `${window.location.origin}/mobile.html?session=${this.sessionId}`;
+            mobileUrlElement.textContent = `${baseUrl}/mobile.html?session=${this.sessionId}`;
         }
     }
 
     setupRealtimeSync() {
-        // Use BroadcastChannel for same-device testing + localStorage for cross-device
-        // This simple approach works without external database for demo purposes
+        // Try Supabase Realtime first
+        if (this.supabase) {
+            try {
+                this.channel = this.supabase.channel(`scanner:${this.sessionId}`);
 
-        // Listen for storage events (cross-tab/cross-device via shared localStorage sync)
+                this.channel
+                    .on('broadcast', { event: 'new-image' }, (payload) => {
+                        console.log('Received image via Supabase:', payload);
+                        if (payload.payload && payload.payload.image) {
+                            this.addImage(payload.payload.image, false);
+                        }
+                    })
+                    .subscribe((status) => {
+                        console.log('Supabase channel status:', status);
+                        if (status === 'SUBSCRIBED') {
+                            this.updateConnectionStatus('connected');
+                        }
+                    });
+
+                console.log('Supabase Realtime channel created');
+            } catch (err) {
+                console.warn('Supabase Realtime failed:', err);
+            }
+        }
+
+        // Also listen for localStorage events (fallback)
         window.addEventListener('storage', (e) => {
             if (e.key === `scanner_${this.sessionId}`) {
                 try {
                     const data = JSON.parse(e.newValue);
                     if (data.type === 'new-image') {
-                        this.addImage(data.image);
+                        this.addImage(data.image, false);
                     }
                 } catch (err) {
                     console.error('Storage event error:', err);
@@ -96,7 +133,7 @@ class PDFScanner {
             }
         });
 
-        // Also poll localStorage for images (for same-tab testing)
+        // Poll localStorage for same-tab testing
         this.pollInterval = setInterval(() => this.pollForImages(), 1000);
 
         this.updateConnectionStatus('connected');
@@ -108,7 +145,6 @@ class PDFScanner {
             if (stored) {
                 const images = JSON.parse(stored);
                 if (images.length > this.images.length) {
-                    // New images found
                     const newImages = images.slice(this.images.length);
                     newImages.forEach(img => this.addImage(img, false));
                 }
@@ -142,7 +178,6 @@ class PDFScanner {
         this.updateControls();
 
         if (save) {
-            // Save to localStorage for persistence
             localStorage.setItem(`images_${this.sessionId}`, JSON.stringify(this.images));
         }
     }
@@ -256,19 +291,16 @@ class PDFScanner {
                 try {
                     const imgProps = await this.getImageDimensions(image.data);
 
-                    // Calculate dimensions to fit page
                     const maxWidth = pageWidth - (margin * 2);
                     const maxHeight = pageHeight - (margin * 2);
 
                     let width = imgProps.width;
                     let height = imgProps.height;
 
-                    // Scale to fit
                     const scale = Math.min(maxWidth / width, maxHeight / height);
                     width *= scale;
                     height *= scale;
 
-                    // Center on page
                     const x = (pageWidth - width) / 2;
                     const y = (pageHeight - height) / 2;
 
@@ -278,7 +310,6 @@ class PDFScanner {
                 }
             }
 
-            // Save the PDF
             const timestamp = new Date().toISOString().slice(0, 10);
             doc.save(`scanned-document-${timestamp}.pdf`);
 
@@ -303,17 +334,14 @@ class PDFScanner {
     }
 
     bindEvents() {
-        // Clear all button
         document.getElementById('clear-btn').addEventListener('click', () => {
             this.clearAllImages();
         });
 
-        // Generate PDF button
         document.getElementById('generate-pdf-btn').addEventListener('click', () => {
             this.generatePDF();
         });
 
-        // Modal close
         document.getElementById('modal-close').addEventListener('click', () => {
             this.closeModal();
         });
@@ -322,24 +350,24 @@ class PDFScanner {
             this.closeModal();
         });
 
-        // Delete image button
         document.getElementById('delete-image-btn').addEventListener('click', () => {
             if (this.selectedImageId) {
                 this.removeImage(this.selectedImageId);
             }
         });
 
-        // Escape key to close modal
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
                 this.closeModal();
             }
         });
 
-        // Cleanup on page unload
         window.addEventListener('beforeunload', () => {
             if (this.pollInterval) {
                 clearInterval(this.pollInterval);
+            }
+            if (this.channel) {
+                this.channel.unsubscribe();
             }
         });
     }
