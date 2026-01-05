@@ -39,20 +39,25 @@ class PDFScanner {
             const baseUrl = window.location.origin;
             const mobileUrl = `${baseUrl}/mobile.html?session=${this.sessionId}`;
 
-            // Use QRCode library from CDN
-            if (typeof QRCode !== 'undefined') {
-                const canvas = document.createElement('canvas');
-                await QRCode.toCanvas(canvas, mobileUrl, {
-                    width: 240,
-                    margin: 2,
-                    color: {
-                        dark: '#ffffff',
-                        light: '#00000000'
-                    }
-                });
+            // Use qrcode-generator library from CDN
+            if (typeof qrcode !== 'undefined') {
+                const qr = qrcode(0, 'M');
+                qr.addData(mobileUrl);
+                qr.make();
+
+                // Create image from QR code
+                const qrImg = document.createElement('img');
+                qrImg.src = qr.createDataURL(8, 0);
+                qrImg.alt = 'Scan to connect';
+                qrImg.style.width = '240px';
+                qrImg.style.height = '240px';
+                qrImg.style.borderRadius = '12px';
+
+                // Apply white filter for dark theme
+                qrImg.style.filter = 'invert(1)';
 
                 qrContainer.innerHTML = '';
-                qrContainer.appendChild(canvas);
+                qrContainer.appendChild(qrImg);
                 mobileUrlElement.textContent = mobileUrl;
 
                 this.updateConnectionStatus('ready');
