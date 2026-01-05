@@ -1,5 +1,9 @@
 // PDF Scanner - Desktop Main JavaScript
-// Polls API for cross-device image sync
+// Uses Supabase Database for image sync
+
+// Supabase configuration
+const SUPABASE_URL = 'https://pntieelizxhmezasqzed.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBudGllZWxpenhobWV6YXNxemVkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzYxMDM2MDAsImV4cCI6MjA1MTY3OTYwMH0.placeholder';
 
 class PDFScanner {
     constructor() {
@@ -7,6 +11,7 @@ class PDFScanner {
         this.images = [];
         this.selectedImageId = null;
         this.pollInterval = null;
+        this.supabase = null;
 
         this.init();
     }
@@ -16,9 +21,21 @@ class PDFScanner {
     }
 
     async init() {
+        this.initSupabase();
         await this.generateQRCode();
         this.setupPolling();
         this.bindEvents();
+    }
+
+    initSupabase() {
+        if (typeof supabase !== 'undefined' && supabase.createClient) {
+            try {
+                this.supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+                console.log('Supabase initialized');
+            } catch (err) {
+                console.warn('Supabase init failed:', err);
+            }
+        }
     }
 
     async generateQRCode() {
@@ -45,7 +62,6 @@ class PDFScanner {
                 qrContainer.innerHTML = '';
                 qrContainer.appendChild(qrImg);
                 mobileUrlElement.textContent = mobileUrl;
-
                 this.updateConnectionStatus('ready');
             } else {
                 throw new Error('QRCode library not loaded');
@@ -53,55 +69,69 @@ class PDFScanner {
         } catch (error) {
             console.error('QR generation error:', error);
             const baseUrl = window.location.origin;
+            const mobileUrl = `${baseUrl}/mobile.html?session=${this.sessionId}`;
             qrContainer.innerHTML = `
         <div class="qr-error">
-          <p>QR Code</p>
-          <p style="font-size: 0.75rem; margin-top: 8px; word-break: break-all;">
-            ${baseUrl}/mobile.html?session=${this.sessionId}
-          </p>
+          <p>Mobile URL:</p>
+          <p style="font-size: 0.7rem; word-break: break-all; margin-top: 8px;">${mobileUrl}</p>
         </div>
       `;
-            mobileUrlElement.textContent = `${baseUrl}/mobile.html?session=${this.sessionId}`;
+            mobileUrlElement.textContent = mobileUrl;
         }
     }
 
     setupPolling() {
-        // Poll API every second for new images
-        this.pollInterval = setInterval(() => {
-            this.fetchImages();
-        }, 1000);
-
-        // Initial fetch
+        // Poll every 2 seconds
+        this.pollInterval = setInterval(() => this.fetchImages(), 2000);
         this.fetchImages();
-
         this.updateConnectionStatus('connected');
     }
 
     async fetchImages() {
         try {
-            const response = await fetch(`/api/images?sessionId=${this.sessionId}`);
-            if (!response.ok) return;
+            let fetchedImages = [];
 
-            const data = await response.json();
-            const fetchedImages = data.images || [];
+            if (this.supabase) {
+                const { data, error } = await this.supabase
+                    .from('scanner_images')
+                    .select('*')
+                    .eq('session_id', this.sessionId)
+                    .order('created_at', { ascending: true });
+
+                if (!error && data) {
+                    fetchedImages = data.map(row => ({
+                        id: row.id,
+                        data: row.image_data,
+                        timestamp: new Date(row.created_at).getTime()
+                    }));
+                }
+            }
+
+            // Also check localStorage as fallback
+            const localImages = JSON.parse(localStorage.getItem(`images_${this.sessionId}`) || '[]');
+
+            // Merge (prefer Supabase, add unique from localStorage)
+            const allImages = [...fetchedImages];
+            localImages.forEach(img => {
+                if (!allImages.some(i => i.timestamp === img.timestamp)) {
+                    allImages.push(img);
+                }
+            });
 
             // Check for new images
-            if (fetchedImages.length > this.images.length) {
-                console.log('New images found:', fetchedImages.length - this.images.length);
-
-                // Add only new images
-                const newImages = fetchedImages.slice(this.images.length);
-                newImages.forEach(img => {
-                    if (!this.images.some(existing => existing.id === img.id)) {
-                        this.images.push(img);
-                    }
-                });
-
+            if (allImages.length > this.images.length) {
+                this.images = allImages;
                 this.renderGallery();
                 this.updateControls();
             }
         } catch (err) {
-            console.error('Fetch error:', err);
+            // Fallback to localStorage
+            const localImages = JSON.parse(localStorage.getItem(`images_${this.sessionId}`) || '[]');
+            if (localImages.length > this.images.length) {
+                this.images = localImages;
+                this.renderGallery();
+                this.updateControls();
+            }
         }
     }
 
@@ -126,8 +156,9 @@ class PDFScanner {
     }
 
     clearAllImages() {
-        if (confirm('Are you sure you want to clear all images?')) {
+        if (confirm('Clear all images?')) {
             this.images = [];
+            localStorage.removeItem(`images_${this.sessionId}`);
             this.renderGallery();
             this.updateControls();
         }
@@ -150,7 +181,7 @@ class PDFScanner {
 
         galleryGrid.innerHTML = this.images.map((image, index) => `
       <div class="gallery-item fade-in" data-id="${image.id}">
-        <img src="${image.data}" alt="Captured document ${index + 1}" loading="lazy">
+        <img src="${image.data}" alt="Document ${index + 1}" loading="lazy">
         <div class="gallery-item-overlay">
           <div class="gallery-item-number">${index + 1}</div>
         </div>
@@ -159,32 +190,24 @@ class PDFScanner {
 
         galleryGrid.querySelectorAll('.gallery-item').forEach(item => {
             item.addEventListener('click', () => {
-                const imageId = item.dataset.id;
-                const image = this.images.find(img => img.id === imageId);
-                if (image) {
-                    this.openModal(image);
-                }
+                const image = this.images.find(img => img.id == item.dataset.id);
+                if (image) this.openModal(image);
             });
         });
     }
 
     updateControls() {
-        const pdfControls = document.getElementById('pdf-controls');
-        pdfControls.style.display = this.images.length > 0 ? 'flex' : 'none';
+        document.getElementById('pdf-controls').style.display = this.images.length > 0 ? 'flex' : 'none';
     }
 
     openModal(image) {
-        const modal = document.getElementById('image-modal');
-        const modalImage = document.getElementById('modal-image');
-
         this.selectedImageId = image.id;
-        modalImage.src = image.data;
-        modal.classList.add('active');
+        document.getElementById('modal-image').src = image.data;
+        document.getElementById('image-modal').classList.add('active');
     }
 
     closeModal() {
-        const modal = document.getElementById('image-modal');
-        modal.classList.remove('active');
+        document.getElementById('image-modal').classList.remove('active');
         this.selectedImageId = null;
     }
 
@@ -196,58 +219,40 @@ class PDFScanner {
 
         const btn = document.getElementById('generate-pdf-btn');
         const originalText = btn.innerHTML;
-        btn.innerHTML = `
-      <div class="spinner" style="width: 18px; height: 18px; border-width: 2px;"></div>
-      Generating...
-    `;
+        btn.innerHTML = '<div class="spinner" style="width:18px;height:18px;border-width:2px;"></div> Generating...';
         btn.disabled = true;
 
         try {
             const { jsPDF } = window.jspdf;
-            const doc = new jsPDF({
-                orientation: 'portrait',
-                unit: 'mm',
-                format: 'a4'
-            });
+            const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 
             const pageWidth = doc.internal.pageSize.getWidth();
             const pageHeight = doc.internal.pageSize.getHeight();
             const margin = 10;
 
             for (let i = 0; i < this.images.length; i++) {
-                if (i > 0) {
-                    doc.addPage();
-                }
+                if (i > 0) doc.addPage();
 
                 const image = this.images[i];
+                const imgProps = await this.getImageDimensions(image.data);
 
-                try {
-                    const imgProps = await this.getImageDimensions(image.data);
+                const maxWidth = pageWidth - margin * 2;
+                const maxHeight = pageHeight - margin * 2;
 
-                    const maxWidth = pageWidth - (margin * 2);
-                    const maxHeight = pageHeight - (margin * 2);
+                let width = imgProps.width;
+                let height = imgProps.height;
+                const scale = Math.min(maxWidth / width, maxHeight / height);
+                width *= scale;
+                height *= scale;
 
-                    let width = imgProps.width;
-                    let height = imgProps.height;
+                const x = (pageWidth - width) / 2;
+                const y = (pageHeight - height) / 2;
 
-                    const scale = Math.min(maxWidth / width, maxHeight / height);
-                    width *= scale;
-                    height *= scale;
-
-                    const x = (pageWidth - width) / 2;
-                    const y = (pageHeight - height) / 2;
-
-                    doc.addImage(image.data, 'JPEG', x, y, width, height);
-                } catch (error) {
-                    console.error(`Failed to add image ${i + 1}:`, error);
-                }
+                doc.addImage(image.data, 'JPEG', x, y, width, height);
             }
 
-            const timestamp = new Date().toISOString().slice(0, 10);
-            doc.save(`scanned-document-${timestamp}.pdf`);
-
+            doc.save(`scanned-document-${new Date().toISOString().slice(0, 10)}.pdf`);
         } catch (error) {
-            console.error('PDF generation error:', error);
             alert('Failed to generate PDF: ' + error.message);
         } finally {
             btn.innerHTML = originalText;
@@ -258,52 +263,27 @@ class PDFScanner {
     getImageDimensions(dataUrl) {
         return new Promise((resolve, reject) => {
             const img = new Image();
-            img.onload = () => {
-                resolve({ width: img.width, height: img.height });
-            };
+            img.onload = () => resolve({ width: img.width, height: img.height });
             img.onerror = reject;
             img.src = dataUrl;
         });
     }
 
     bindEvents() {
-        document.getElementById('clear-btn').addEventListener('click', () => {
-            this.clearAllImages();
-        });
-
-        document.getElementById('generate-pdf-btn').addEventListener('click', () => {
-            this.generatePDF();
-        });
-
-        document.getElementById('modal-close').addEventListener('click', () => {
-            this.closeModal();
-        });
-
-        document.querySelector('.modal-overlay').addEventListener('click', () => {
-            this.closeModal();
-        });
-
+        document.getElementById('clear-btn').addEventListener('click', () => this.clearAllImages());
+        document.getElementById('generate-pdf-btn').addEventListener('click', () => this.generatePDF());
+        document.getElementById('modal-close').addEventListener('click', () => this.closeModal());
+        document.querySelector('.modal-overlay').addEventListener('click', () => this.closeModal());
         document.getElementById('delete-image-btn').addEventListener('click', () => {
-            if (this.selectedImageId) {
-                this.removeImage(this.selectedImageId);
-            }
+            if (this.selectedImageId) this.removeImage(this.selectedImageId);
         });
-
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') {
-                this.closeModal();
-            }
+            if (e.key === 'Escape') this.closeModal();
         });
-
         window.addEventListener('beforeunload', () => {
-            if (this.pollInterval) {
-                clearInterval(this.pollInterval);
-            }
+            if (this.pollInterval) clearInterval(this.pollInterval);
         });
     }
 }
 
-// Initialize
-document.addEventListener('DOMContentLoaded', () => {
-    new PDFScanner();
-});
+document.addEventListener('DOMContentLoaded', () => new PDFScanner());
