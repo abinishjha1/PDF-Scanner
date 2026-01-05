@@ -1,5 +1,5 @@
-// PDF Scanner - Mobile Camera JavaScript (Vercel version)
-// Handles camera access, image capture, and upload to API
+// PDF Scanner - Mobile Camera JavaScript
+// Handles camera access, image capture, and sync via localStorage
 
 class MobileScanner {
     constructor() {
@@ -22,8 +22,24 @@ class MobileScanner {
     }
 
     async init() {
+        // Load existing capture count
+        this.loadCaptureCount();
+
         await this.startCamera();
         this.bindEvents();
+    }
+
+    loadCaptureCount() {
+        try {
+            const stored = localStorage.getItem(`images_${this.sessionId}`);
+            if (stored) {
+                const images = JSON.parse(stored);
+                this.captureCount = images.length;
+                this.updateCaptureCount();
+            }
+        } catch (err) {
+            console.error('Load count error:', err);
+        }
     }
 
     async startCamera() {
@@ -90,8 +106,8 @@ class MobileScanner {
         const ctx = canvas.getContext('2d');
         ctx.drawImage(video, 0, 0);
 
-        // Convert to data URL (compressed for upload)
-        this.capturedImageData = canvas.toDataURL('image/jpeg', 0.8);
+        // Convert to data URL (compressed for storage)
+        this.capturedImageData = canvas.toDataURL('image/jpeg', 0.7);
 
         // Show preview
         previewImage.src = this.capturedImageData;
@@ -117,7 +133,7 @@ class MobileScanner {
         this.capturedImageData = null;
     }
 
-    async uploadImage() {
+    async saveImage() {
         if (!this.capturedImageData) return;
 
         const previewModal = document.getElementById('preview-modal');
@@ -129,20 +145,35 @@ class MobileScanner {
         uploadToast.classList.add('active');
 
         try {
-            // Upload to API as JSON
-            const response = await fetch(`/api/images?sessionId=${this.sessionId}`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    imageData: this.capturedImageData
-                })
-            });
+            // Create image object
+            const image = {
+                id: `img-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                data: this.capturedImageData,
+                timestamp: Date.now()
+            };
 
-            if (!response.ok) {
-                throw new Error('Upload failed');
+            // Get existing images from localStorage
+            let images = [];
+            try {
+                const stored = localStorage.getItem(`images_${this.sessionId}`);
+                if (stored) {
+                    images = JSON.parse(stored);
+                }
+            } catch (e) {
+                images = [];
             }
+
+            // Add new image
+            images.push(image);
+
+            // Save to localStorage
+            localStorage.setItem(`images_${this.sessionId}`, JSON.stringify(images));
+
+            // Trigger storage event for cross-tab sync (on same origin)
+            localStorage.setItem(`scanner_${this.sessionId}`, JSON.stringify({
+                type: 'new-image',
+                image: image
+            }));
 
             // Success
             this.captureCount++;
@@ -156,9 +187,9 @@ class MobileScanner {
             }, 2000);
 
         } catch (error) {
-            console.error('Upload error:', error);
+            console.error('Save error:', error);
             uploadToast.classList.remove('active');
-            alert('Failed to upload image. Please try again.');
+            alert('Failed to save image. Please try again.');
         }
 
         this.capturedImageData = null;
@@ -182,7 +213,7 @@ class MobileScanner {
 
         // Use photo button
         document.getElementById('use-btn').addEventListener('click', () => {
-            this.uploadImage();
+            this.saveImage();
         });
 
         // Retry camera button

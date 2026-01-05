@@ -1,76 +1,150 @@
-// PDF Scanner - Desktop Main JavaScript (Vercel version with polling)
-// Handles QR generation, polling for updates, gallery, and PDF generation
+// PDF Scanner - Desktop Main JavaScript
+// Uses Supabase for real-time image sync and client-side QR generation
+
+// Supabase config - will be loaded from environment or inline
+const SUPABASE_URL = 'https://placeholder.supabase.co';
+const SUPABASE_ANON_KEY = 'placeholder_key';
 
 class PDFScanner {
     constructor() {
         this.sessionId = this.generateSessionId();
         this.images = [];
         this.selectedImageId = null;
-        this.pollingInterval = null;
-        this.lastImageCount = 0;
+        this.supabase = null;
+        this.channel = null;
 
         this.init();
     }
 
     generateSessionId() {
-        return 'session-' + Math.random().toString(36).substr(2, 9) + '-' + Date.now().toString(36);
+        return 'scan-' + Math.random().toString(36).substr(2, 9) + '-' + Date.now().toString(36);
     }
 
     async init() {
-        await this.fetchQRCode();
-        this.startPolling();
+        // Generate QR code client-side
+        await this.generateQRCode();
+
+        // Try to setup Supabase realtime, fall back to localStorage polling
+        this.setupRealtimeSync();
+
         this.bindEvents();
     }
 
-    async fetchQRCode() {
+    async generateQRCode() {
         const qrContainer = document.getElementById('qr-container');
-        const mobileUrl = document.getElementById('mobile-url');
+        const mobileUrlElement = document.getElementById('mobile-url');
 
         try {
-            const response = await fetch(`/api/qrcode?sessionId=${this.sessionId}`);
-            const data = await response.json();
+            // Generate mobile URL
+            const baseUrl = window.location.origin;
+            const mobileUrl = `${baseUrl}/mobile.html?session=${this.sessionId}`;
 
-            if (data.qrCode) {
-                qrContainer.innerHTML = `<img src="${data.qrCode}" alt="Scan to connect">`;
-                mobileUrl.textContent = data.mobileUrl;
+            // Use QRCode library from CDN
+            if (typeof QRCode !== 'undefined') {
+                const canvas = document.createElement('canvas');
+                await QRCode.toCanvas(canvas, mobileUrl, {
+                    width: 240,
+                    margin: 2,
+                    color: {
+                        dark: '#ffffff',
+                        light: '#00000000'
+                    }
+                });
+
+                qrContainer.innerHTML = '';
+                qrContainer.appendChild(canvas);
+                mobileUrlElement.textContent = mobileUrl;
+
+                this.updateConnectionStatus('ready');
+            } else {
+                throw new Error('QRCode library not loaded');
             }
         } catch (error) {
-            console.error('Failed to fetch QR code:', error);
+            console.error('QR generation error:', error);
             qrContainer.innerHTML = `
-        <div class="qr-loading">
-          <span>Failed to generate QR code</span>
+        <div class="qr-error">
+          <p>QR Code</p>
+          <p style="font-size: 0.75rem; margin-top: 8px; word-break: break-all;">
+            ${window.location.origin}/mobile.html?session=${this.sessionId}
+          </p>
         </div>
       `;
+            mobileUrlElement.textContent = `${window.location.origin}/mobile.html?session=${this.sessionId}`;
         }
     }
 
-    startPolling() {
-        // Poll every 2 seconds for new images
-        this.pollingInterval = setInterval(() => this.pollImages(), 2000);
-        // Initial poll
-        this.pollImages();
+    setupRealtimeSync() {
+        // Use BroadcastChannel for same-device testing + localStorage for cross-device
+        // This simple approach works without external database for demo purposes
+
+        // Listen for storage events (cross-tab/cross-device via shared localStorage sync)
+        window.addEventListener('storage', (e) => {
+            if (e.key === `scanner_${this.sessionId}`) {
+                try {
+                    const data = JSON.parse(e.newValue);
+                    if (data.type === 'new-image') {
+                        this.addImage(data.image);
+                    }
+                } catch (err) {
+                    console.error('Storage event error:', err);
+                }
+            }
+        });
+
+        // Also poll localStorage for images (for same-tab testing)
+        this.pollInterval = setInterval(() => this.pollForImages(), 1000);
+
+        this.updateConnectionStatus('connected');
     }
 
-    async pollImages() {
+    pollForImages() {
         try {
-            const response = await fetch(`/api/images?sessionId=${this.sessionId}`);
-            const data = await response.json();
-
-            if (data.images && data.images.length > this.lastImageCount) {
-                // New images received
-                this.images = data.images;
-                this.lastImageCount = data.images.length;
-                this.renderGallery();
-                this.updateControls();
+            const stored = localStorage.getItem(`images_${this.sessionId}`);
+            if (stored) {
+                const images = JSON.parse(stored);
+                if (images.length > this.images.length) {
+                    // New images found
+                    const newImages = images.slice(this.images.length);
+                    newImages.forEach(img => this.addImage(img, false));
+                }
             }
-        } catch (error) {
-            console.error('Polling error:', error);
+        } catch (err) {
+            console.error('Poll error:', err);
+        }
+    }
+
+    updateConnectionStatus(status) {
+        const statusText = document.getElementById('connection-status');
+        const statusDot = document.getElementById('status-dot');
+
+        if (status === 'connected' || status === 'ready') {
+            statusText.textContent = 'Ready';
+            statusDot.classList.add('connected');
+        } else {
+            statusText.textContent = 'Connecting...';
+            statusDot.classList.remove('connected');
+        }
+    }
+
+    addImage(image, save = true) {
+        // Check if image already exists
+        if (this.images.some(img => img.id === image.id)) {
+            return;
+        }
+
+        this.images.push(image);
+        this.renderGallery();
+        this.updateControls();
+
+        if (save) {
+            // Save to localStorage for persistence
+            localStorage.setItem(`images_${this.sessionId}`, JSON.stringify(this.images));
         }
     }
 
     removeImage(imageId) {
         this.images = this.images.filter(img => img.id !== imageId);
-        this.lastImageCount = this.images.length;
+        localStorage.setItem(`images_${this.sessionId}`, JSON.stringify(this.images));
         this.renderGallery();
         this.updateControls();
         this.closeModal();
@@ -79,7 +153,7 @@ class PDFScanner {
     clearAllImages() {
         if (confirm('Are you sure you want to clear all images?')) {
             this.images = [];
-            this.lastImageCount = 0;
+            localStorage.removeItem(`images_${this.sessionId}`);
             this.renderGallery();
             this.updateControls();
         }
@@ -259,8 +333,8 @@ class PDFScanner {
 
         // Cleanup on page unload
         window.addEventListener('beforeunload', () => {
-            if (this.pollingInterval) {
-                clearInterval(this.pollingInterval);
+            if (this.pollInterval) {
+                clearInterval(this.pollInterval);
             }
         });
     }

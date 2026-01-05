@@ -7,6 +7,10 @@
     <title>PDF Scanner - Desktop</title>
     <link rel="stylesheet" href="src/style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- QR Code library - client-side -->
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+    <!-- Supabase JS -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 
 <body>
@@ -24,8 +28,8 @@
                 <span>PDF Scanner</span>
             </div>
             <div class="session-info">
-                <span class="status-dot connected"></span>
-                <span id="connection-status">Ready</span>
+                <span class="status-dot" id="status-dot"></span>
+                <span id="connection-status">Connecting...</span>
             </div>
         </header>
 
