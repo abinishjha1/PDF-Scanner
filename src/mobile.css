@@ -276,14 +276,18 @@ body {
 /* Preview Modal */
 .preview-modal {
     position: fixed;
-    inset: 0;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
     z-index: 200;
     display: none;
+    flex-direction: column;
     background: var(--bg-primary);
 }
 
 .preview-modal.active {
-    display: flex;
+    display: flex !important;
 }
 
 .preview-content {
@@ -296,6 +300,7 @@ body {
 #preview-image {
     flex: 1;
     width: 100%;
+    max-height: calc(100vh - 120px);
     object-fit: contain;
     background: var(--bg-primary);
 }
@@ -306,10 +311,12 @@ body {
     padding: 20px;
     padding-bottom: calc(var(--safe-bottom) + 20px);
     background: var(--bg-overlay);
+    min-height: 80px;
 }
 
 .preview-actions .btn {
     flex: 1;
+    min-height: 50px;
 }
 
 /* Buttons */
