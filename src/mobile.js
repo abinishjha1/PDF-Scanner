@@ -23,11 +23,12 @@ class MobileScanner {
     }
 
     async init() {
-        // Load existing images from API
-        await this.loadImages();
-
+        // Start camera FIRST - don't block on API
         await this.startCamera();
         this.bindEvents();
+
+        // Load existing images in background (non-blocking)
+        this.loadImages().catch(err => console.log('Image load skipped'));
     }
 
     async loadImages() {
