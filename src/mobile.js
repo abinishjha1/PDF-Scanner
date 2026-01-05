@@ -3,7 +3,7 @@
 
 // Supabase configuration
 const SUPABASE_URL = 'https://pntieelizxhmezasqzed.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBudGllZWxpenhobWV6YXNxemVkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzYxMDM2MDAsImV4cCI6MjA1MTY3OTYwMH0.placeholder';
+const SUPABASE_KEY = 'sb_publishable_UXZ8961wiUjnY5zRVGwymg__2twvxum';
 
 class MobileScanner {
     constructor() {
