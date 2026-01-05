@@ -1,5 +1,5 @@
 // PDF Scanner - Mobile Camera JavaScript
-// Syncs images to desktop via API polling
+// Syncs images to desktop via API
 
 class MobileScanner {
     constructor() {
@@ -23,18 +23,19 @@ class MobileScanner {
     }
 
     async init() {
-        // Load existing images
-        this.loadImages();
+        // Load existing images from API
+        await this.loadImages();
 
         await this.startCamera();
         this.bindEvents();
     }
 
-    loadImages() {
+    async loadImages() {
         try {
-            const stored = localStorage.getItem(`images_${this.sessionId}`);
-            if (stored) {
-                this.images = JSON.parse(stored);
+            const response = await fetch(`/api/images?sessionId=${this.sessionId}`);
+            if (response.ok) {
+                const data = await response.json();
+                this.images = data.images || [];
                 this.captureCount = this.images.length;
                 this.updateCaptureCount();
                 this.updateCapturedImagesPreview();
@@ -144,28 +145,21 @@ class MobileScanner {
         uploadToast.classList.add('active');
 
         try {
-            const image = {
-                id: `img-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                data: dataToSave,
-                timestamp: Date.now()
-            };
-
-            // Add to local array
-            this.images.push(image);
-
-            // Save to localStorage
-            localStorage.setItem(`images_${this.sessionId}`, JSON.stringify(this.images));
-
-            // Trigger storage event for cross-tab sync
-            const event = JSON.stringify({
-                type: 'new-image',
-                image: image,
-                timestamp: Date.now()
+            // Upload to API
+            const response = await fetch(`/api/images?sessionId=${this.sessionId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ imageData: dataToSave })
             });
-            localStorage.setItem(`scanner_${this.sessionId}`, event);
-            // Immediately remove and set again to trigger event
-            localStorage.removeItem(`scanner_${this.sessionId}`);
-            localStorage.setItem(`scanner_${this.sessionId}`, event);
+
+            if (!response.ok) {
+                throw new Error('Upload failed');
+            }
+
+            const result = await response.json();
+            console.log('Image uploaded:', result);
 
             this.captureCount++;
             this.updateCaptureCount();
@@ -218,55 +212,48 @@ class MobileScanner {
         const container = document.getElementById('captured-images');
         const countSpan = document.getElementById('captured-count');
 
-        if (this.images.length > 0) {
+        if (this.captureCount > 0) {
             container.style.display = 'block';
-            countSpan.textContent = `${this.images.length} image${this.images.length !== 1 ? 's' : ''} captured`;
+            countSpan.textContent = `${this.captureCount} image${this.captureCount !== 1 ? 's' : ''} captured`;
         } else {
             container.style.display = 'none';
         }
     }
 
     bindEvents() {
-        // Capture button
         document.getElementById('capture-btn').addEventListener('click', () => {
             this.captureImage();
         });
 
-        // Retake button
         document.getElementById('retake-btn').addEventListener('click', () => {
             this.closePreview();
         });
 
-        // Use photo button
         document.getElementById('use-btn').addEventListener('click', () => {
             this.saveImage();
         });
 
-        // File input for gallery
         document.getElementById('file-input').addEventListener('change', (e) => {
             if (e.target.files.length > 0) {
                 this.handleFileSelect(e.target.files);
-                e.target.value = ''; // Reset input
+                e.target.value = '';
             }
         });
 
-        // Done button - go back to inform user
         document.getElementById('done-btn').addEventListener('click', () => {
-            if (this.images.length > 0) {
-                alert(`${this.images.length} image(s) captured! Check your desktop to generate PDF.`);
+            if (this.captureCount > 0) {
+                alert(`${this.captureCount} image(s) captured! Check your desktop to generate PDF.`);
             } else {
                 alert('No images captured yet. Take some photos first!');
             }
         });
 
-        // Retry camera button
         document.getElementById('retry-btn').addEventListener('click', () => {
             document.getElementById('camera-error').style.display = 'none';
             document.getElementById('camera-loading').style.display = 'flex';
             this.startCamera();
         });
 
-        // Handle page visibility change
         document.addEventListener('visibilitychange', () => {
             if (document.hidden) {
                 if (this.stream) {
@@ -279,7 +266,6 @@ class MobileScanner {
             }
         });
 
-        // Cleanup on page unload
         window.addEventListener('beforeunload', () => {
             if (this.stream) {
                 this.stream.getTracks().forEach(track => track.stop());
@@ -288,7 +274,7 @@ class MobileScanner {
     }
 }
 
-// Initialize the application
+// Initialize
 document.addEventListener('DOMContentLoaded', () => {
     new MobileScanner();
 });

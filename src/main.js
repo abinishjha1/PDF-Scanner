@@ -1,5 +1,5 @@
 // PDF Scanner - Desktop Main JavaScript
-// Uses localStorage polling for cross-device image sync
+// Polls API for cross-device image sync
 
 class PDFScanner {
     constructor() {
@@ -16,12 +16,8 @@ class PDFScanner {
     }
 
     async init() {
-        // Generate QR code client-side
         await this.generateQRCode();
-
-        // Setup polling for images
         this.setupPolling();
-
         this.bindEvents();
     }
 
@@ -70,48 +66,42 @@ class PDFScanner {
     }
 
     setupPolling() {
-        // Listen for storage events (cross-tab on same domain)
-        window.addEventListener('storage', (e) => {
-            if (e.key === `images_${this.sessionId}` || e.key === `scanner_${this.sessionId}`) {
-                console.log('Storage event received:', e.key);
-                this.loadImagesFromStorage();
-            }
-        });
-
-        // Poll localStorage every 500ms for cross-device sync
+        // Poll API every second for new images
         this.pollInterval = setInterval(() => {
-            this.loadImagesFromStorage();
-        }, 500);
+            this.fetchImages();
+        }, 1000);
 
-        // Initial load
-        this.loadImagesFromStorage();
+        // Initial fetch
+        this.fetchImages();
 
         this.updateConnectionStatus('connected');
     }
 
-    loadImagesFromStorage() {
+    async fetchImages() {
         try {
-            const stored = localStorage.getItem(`images_${this.sessionId}`);
-            if (stored) {
-                const storedImages = JSON.parse(stored);
+            const response = await fetch(`/api/images?sessionId=${this.sessionId}`);
+            if (!response.ok) return;
 
-                // Check if there are new images
-                if (storedImages.length > this.images.length) {
-                    const newImages = storedImages.slice(this.images.length);
-                    console.log('New images found:', newImages.length);
+            const data = await response.json();
+            const fetchedImages = data.images || [];
 
-                    newImages.forEach(img => {
-                        if (!this.images.some(existing => existing.id === img.id)) {
-                            this.images.push(img);
-                        }
-                    });
+            // Check for new images
+            if (fetchedImages.length > this.images.length) {
+                console.log('New images found:', fetchedImages.length - this.images.length);
 
-                    this.renderGallery();
-                    this.updateControls();
-                }
+                // Add only new images
+                const newImages = fetchedImages.slice(this.images.length);
+                newImages.forEach(img => {
+                    if (!this.images.some(existing => existing.id === img.id)) {
+                        this.images.push(img);
+                    }
+                });
+
+                this.renderGallery();
+                this.updateControls();
             }
         } catch (err) {
-            console.error('Load from storage error:', err);
+            console.error('Fetch error:', err);
         }
     }
 
@@ -130,7 +120,6 @@ class PDFScanner {
 
     removeImage(imageId) {
         this.images = this.images.filter(img => img.id !== imageId);
-        localStorage.setItem(`images_${this.sessionId}`, JSON.stringify(this.images));
         this.renderGallery();
         this.updateControls();
         this.closeModal();
@@ -139,7 +128,6 @@ class PDFScanner {
     clearAllImages() {
         if (confirm('Are you sure you want to clear all images?')) {
             this.images = [];
-            localStorage.removeItem(`images_${this.sessionId}`);
             this.renderGallery();
             this.updateControls();
         }
@@ -169,7 +157,6 @@ class PDFScanner {
       </div>
     `).join('');
 
-        // Bind click events
         galleryGrid.querySelectorAll('.gallery-item').forEach(item => {
             item.addEventListener('click', () => {
                 const imageId = item.dataset.id;
@@ -316,7 +303,7 @@ class PDFScanner {
     }
 }
 
-// Initialize the application
+// Initialize
 document.addEventListener('DOMContentLoaded', () => {
     new PDFScanner();
 });
