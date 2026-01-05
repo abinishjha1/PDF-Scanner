@@ -99,8 +99,6 @@ class MobileScanner {
     captureImage() {
         const video = document.getElementById('camera-video');
         const canvas = document.getElementById('capture-canvas');
-        const previewModal = document.getElementById('preview-modal');
-        const previewImage = document.getElementById('preview-image');
 
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
@@ -108,12 +106,12 @@ class MobileScanner {
         const ctx = canvas.getContext('2d');
         ctx.drawImage(video, 0, 0);
 
-        this.capturedImageData = canvas.toDataURL('image/jpeg', 0.7);
-
-        previewImage.src = this.capturedImageData;
-        previewModal.classList.add('active');
+        const imageData = canvas.toDataURL('image/jpeg', 0.7);
 
         this.showFlash();
+
+        // Auto-upload immediately (no preview modal)
+        this.saveImage(imageData);
     }
 
     showFlash() {
