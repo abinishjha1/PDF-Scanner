@@ -46,8 +46,8 @@ class PDFScanner {
         const startScanBtn = document.getElementById('start-scan-btn');
         if (startScanBtn) {
             startScanBtn.addEventListener('click', () => {
-                // Redirect to mobile.html with this session
-                window.location.href = `mobile.html?session=${this.sessionId}`;
+                // Redirect to standalone scanner (no sync to desktop)
+                window.location.href = 'scan.html';
             });
         }
 

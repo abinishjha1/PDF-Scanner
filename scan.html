@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>PDF Scanner - Mobile</title>
+    <link rel="stylesheet" href="src/mobile.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- jsPDF for local PDF generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="header">
+            <h1>📱 Document Scanner</h1>
+            <div class="capture-count" id="capture-count">0 captured</div>
+        </header>
+
+        <!-- Camera View -->
+        <main class="camera-section">
+            <div class="camera-container" id="camera-container">
+                <video id="camera-video" autoplay playsinline></video>
+                <canvas id="capture-canvas" style="display: none;"></canvas>
+
+                <!-- Camera overlay guides -->
+                <div class="camera-overlay">
+                    <div class="corner top-left"></div>
+                    <div class="corner top-right"></div>
+                    <div class="corner bottom-left"></div>
+                    <div class="corner bottom-right"></div>
+                </div>
+
+                <!-- Loading state -->
+                <div class="camera-loading" id="camera-loading">
+                    <div class="spinner"></div>
+                    <p>Starting camera...</p>
+                </div>
+
+                <!-- Error state -->
+                <div class="camera-error" id="camera-error" style="display: none;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10" />
+                        <line x1="12" y1="8" x2="12" y2="12" />
+                        <line x1="12" y1="16" x2="12.01" y2="16" />
+                    </svg>
+                    <p id="error-message">Camera access denied</p>
+                    <button class="btn btn-primary" id="retry-btn">Try Again</button>
+                </div>
+            </div>
+
+            <!-- Capture Controls -->
+            <div class="capture-controls">
+                <!-- Gallery button -->
+                <label class="gallery-btn" id="gallery-btn">
+                    <input type="file" accept="image/*" multiple id="file-input" style="display: none;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                        <circle cx="8.5" cy="8.5" r="1.5" />
+                        <polyline points="21 15 16 10 5 21" />
+                    </svg>
+                </label>
+
+                <!-- Capture button -->
+                <button class="capture-btn" id="capture-btn" disabled>
+                    <div class="capture-btn-inner"></div>
+                </button>
+
+                <!-- Generate PDF button -->
+                <button class="done-btn" id="generate-pdf-btn"
+                    style="background: linear-gradient(135deg, #10b981, #059669);">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                        <polyline points="7 10 12 15 17 10" />
+                        <line x1="12" y1="15" x2="12" y2="3" />
+                    </svg>
+                </button>
+            </div>
+            <p class="capture-hint">Capture images → Generate PDF</p>
+        </main>
+
+        <!-- Image Gallery Preview -->
+        <div class="mobile-gallery" id="mobile-gallery" style="display: none;">
+            <div class="gallery-header">
+                <span id="gallery-count">0 images</span>
+                <button class="btn btn-secondary btn-small" id="clear-all-btn">Clear All</button>
+            </div>
+            <div class="gallery-scroll" id="gallery-scroll"></div>
+        </div>
+
+        <!-- Upload Progress -->
+        <div class="upload-toast" id="upload-toast">
+            <div class="upload-progress" id="upload-progress"></div>
+            <span id="upload-message">Processing...</span>
+        </div>
+
+        <!-- Success Toast -->
+        <div class="success-toast" id="success-toast">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="20 6 9 17 4 12" />
+            </svg>
+            <span id="success-message">Photo captured!</span>
+        </div>
+    </div>
+
+    <script>
+        // Standalone Mobile Scanner with local PDF generation
+        class StandaloneMobileScanner {
+            constructor() {
+                this.images = [];
+                this.stream = null;
+                this.init();
+            }
+
+            async init() {
+                await this.startCamera();
+                this.bindEvents();
+            }
+
+            async startCamera() {
+                const video = document.getElementById('camera-video');
+                const loading = document.getElementById('camera-loading');
+                const error = document.getElementById('camera-error');
+                const captureBtn = document.getElementById('capture-btn');
+
+                try {
+                    this.stream = await navigator.mediaDevices.getUserMedia({
+                        video: {
+                            facingMode: { ideal: 'environment' },
+                            width: { ideal: 1920 },
+                            height: { ideal: 1080 }
+                        },
+                        audio: false
+                    });
+
+                    video.srcObject = this.stream;
+
+                    video.onloadedmetadata = () => {
+                        loading.style.display = 'none';
+                        captureBtn.disabled = false;
+                    };
+                } catch (err) {
+                    console.error('Camera access error:', err);
+                    loading.style.display = 'none';
+                    error.style.display = 'flex';
+
+                    let errorMessage = 'Camera access denied';
+                    if (err.name === 'NotAllowedError') {
+                        errorMessage = 'Please allow camera access';
+                    } else if (err.name === 'NotFoundError') {
+                        errorMessage = 'No camera found';
+                    }
+
+                    document.getElementById('error-message').textContent = errorMessage;
+                }
+            }
+
+            captureImage() {
+                const video = document.getElementById('camera-video');
+                const canvas = document.getElementById('capture-canvas');
+
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(video, 0, 0);
+
+                const imageData = canvas.toDataURL('image/jpeg', 0.7);
+
+                this.images.push({
+                    id: Date.now(),
+                    data: imageData
+                });
+
+                this.showFlash();
+                this.updateUI();
+                this.showSuccessToast('Photo captured!');
+            }
+
+            showFlash() {
+                const flash = document.createElement('div');
+                flash.className = 'flash-overlay';
+                document.body.appendChild(flash);
+                setTimeout(() => flash.remove(), 300);
+            }
+
+            updateUI() {
+                const countEl = document.getElementById('capture-count');
+                const galleryCountEl = document.getElementById('gallery-count');
+                const galleryEl = document.getElementById('mobile-gallery');
+                const scrollEl = document.getElementById('gallery-scroll');
+
+                countEl.textContent = `${this.images.length} captured`;
+                galleryCountEl.textContent = `${this.images.length} images`;
+
+                if (this.images.length > 0) {
+                    galleryEl.style.display = 'block';
+                    scrollEl.innerHTML = this.images.map((img, i) => `
+                    <div class="gallery-thumb" data-id="${img.id}">
+                        <img src="${img.data}" alt="Image ${i + 1}">
+                        <span class="thumb-number">${i + 1}</span>
+                    </div>
+                `).join('');
+                } else {
+                    galleryEl.style.display = 'none';
+                }
+            }
+
+            showSuccessToast(message) {
+                const toast = document.getElementById('success-toast');
+                document.getElementById('success-message').textContent = message;
+                toast.classList.add('active');
+                setTimeout(() => toast.classList.remove('active'), 2000);
+            }
+
+            async handleFileSelect(files) {
+                for (const file of files) {
+                    if (file.type.startsWith('image/')) {
+                        const reader = new FileReader();
+                        reader.onload = (e) => {
+                            this.images.push({
+                                id: Date.now() + Math.random(),
+                                data: e.target.result
+                            });
+                            this.updateUI();
+                        };
+                        reader.readAsDataURL(file);
+                    }
+                }
+            }
+
+            clearAll() {
+                if (confirm('Clear all images?')) {
+                    this.images = [];
+                    this.updateUI();
+                }
+            }
+
+            async generatePDF() {
+                if (this.images.length === 0) {
+                    alert('No images to convert. Capture some photos first!');
+                    return;
+                }
+
+                const toast = document.getElementById('upload-toast');
+                document.getElementById('upload-message').textContent = 'Generating PDF...';
+                toast.classList.add('active');
+
+                try {
+                    const { jsPDF } = window.jspdf;
+                    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+
+                    const pageWidth = doc.internal.pageSize.getWidth();
+                    const pageHeight = doc.internal.pageSize.getHeight();
+                    const margin = 10;
+
+                    for (let i = 0; i < this.images.length; i++) {
+                        if (i > 0) doc.addPage();
+
+                        const imgProps = await this.getImageDimensions(this.images[i].data);
+
+                        const maxWidth = pageWidth - margin * 2;
+                        const maxHeight = pageHeight - margin * 2;
+
+                        let width = imgProps.width;
+                        let height = imgProps.height;
+                        const scale = Math.min(maxWidth / width, maxHeight / height);
+                        width *= scale;
+                        height *= scale;
+
+                        const x = (pageWidth - width) / 2;
+                        const y = (pageHeight - height) / 2;
+
+                        doc.addImage(this.images[i].data, 'JPEG', x, y, width, height);
+                    }
+
+                    toast.classList.remove('active');
+                    doc.save(`scanned-${new Date().toISOString().slice(0, 10)}.pdf`);
+                    this.showSuccessToast('PDF downloaded!');
+
+                } catch (error) {
+                    console.error('PDF error:', error);
+                    toast.classList.remove('active');
+                    alert('Failed to generate PDF: ' + error.message);
+                }
+            }
+
+            getImageDimensions(dataUrl) {
+                return new Promise((resolve, reject) => {
+                    const img = new Image();
+                    img.onload = () => resolve({ width: img.width, height: img.height });
+                    img.onerror = reject;
+                    img.src = dataUrl;
+                });
+            }
+
+            bindEvents() {
+                document.getElementById('capture-btn').addEventListener('click', () => this.captureImage());
+                document.getElementById('generate-pdf-btn').addEventListener('click', () => this.generatePDF());
+                document.getElementById('clear-all-btn').addEventListener('click', () => this.clearAll());
+
+                document.getElementById('file-input').addEventListener('change', (e) => {
+                    if (e.target.files.length > 0) {
+                        this.handleFileSelect(e.target.files);
+                        e.target.value = '';
+                    }
+                });
+
+                document.getElementById('retry-btn').addEventListener('click', () => {
+                    document.getElementById('camera-error').style.display = 'none';
+                    document.getElementById('camera-loading').style.display = 'flex';
+                    this.startCamera();
+                });
+
+                window.addEventListener('beforeunload', () => {
+                    if (this.stream) {
+                        this.stream.getTracks().forEach(track => track.stop());
+                    }
+                });
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => new StandaloneMobileScanner());
+    </script>
+</body>
+
+</html>
