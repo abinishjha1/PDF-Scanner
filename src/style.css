@@ -9,28 +9,28 @@
   --bg-secondary: #12121a;
   --bg-card: rgba(255, 255, 255, 0.03);
   --bg-card-hover: rgba(255, 255, 255, 0.06);
-  
+
   --text-primary: #ffffff;
   --text-secondary: rgba(255, 255, 255, 0.7);
   --text-muted: rgba(255, 255, 255, 0.4);
-  
+
   --accent-primary: #6366f1;
   --accent-secondary: #8b5cf6;
   --accent-gradient: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a855f7 100%);
-  
+
   --success: #10b981;
   --danger: #ef4444;
   --warning: #f59e0b;
-  
+
   --border-color: rgba(255, 255, 255, 0.08);
   --glow: 0 0 40px rgba(99, 102, 241, 0.3);
-  
+
   /* Spacing */
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 20px;
   --radius-xl: 28px;
-  
+
   /* Transitions */
   --transition-fast: 0.15s ease;
   --transition-normal: 0.3s ease;
@@ -59,7 +59,7 @@ body::before {
   left: -50%;
   width: 200%;
   height: 200%;
-  background: 
+  background:
     radial-gradient(circle at 20% 20%, rgba(99, 102, 241, 0.1) 0%, transparent 40%),
     radial-gradient(circle at 80% 80%, rgba(168, 85, 247, 0.1) 0%, transparent 40%);
   animation: backgroundPulse 15s ease-in-out infinite alternate;
@@ -68,8 +68,13 @@ body::before {
 }
 
 @keyframes backgroundPulse {
-  0% { transform: translate(0, 0) rotate(0deg); }
-  100% { transform: translate(-5%, -5%) rotate(5deg); }
+  0% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+
+  100% {
+    transform: translate(-5%, -5%) rotate(5deg);
+  }
 }
 
 /* App Container */
@@ -128,8 +133,15 @@ body::before {
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.5;
+  }
 }
 
 /* Main Content */
@@ -221,7 +233,9 @@ body::before {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .mobile-url {
@@ -325,7 +339,7 @@ body::before {
 .gallery-item-overlay {
   position: absolute;
   inset: 0;
-  background: linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 50%);
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.7) 0%, transparent 50%);
   opacity: 0;
   transition: opacity var(--transition-fast);
   display: flex;
@@ -444,6 +458,7 @@ body::before {
     opacity: 0;
     transform: scale(0.95);
   }
+
   to {
     opacity: 1;
     transform: scale(1);
@@ -496,6 +511,67 @@ body::before {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Mobile Scan Section */
+.mobile-scan-section {
+  grid-column: 1 / -1;
+}
+
+.mobile-scan-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-xl);
+  padding: 48px 32px;
+  text-align: center;
+  backdrop-filter: blur(20px);
+}
+
+.mobile-scan-card h2 {
+  font-size: 1.75rem;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.mobile-scan-card p {
+  color: var(--text-secondary);
+  font-size: 1rem;
+  margin-bottom: 24px;
+}
+
+.btn-large {
+  padding: 16px 32px;
+  font-size: 1.1rem;
+}
+
+.btn-large svg {
+  width: 24px;
+  height: 24px;
+}
+
+.mobile-hint {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  margin-top: 24px;
+  margin-bottom: 0;
+}
+
+/* Hide QR on mobile */
+@media (max-width: 768px) {
+  .main-content {
+    grid-template-columns: 1fr;
+  }
+
+  .qr-section {
+    position: static;
+  }
 }

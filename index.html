@@ -13,6 +13,13 @@
     <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
     <!-- Supabase JS -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- Mobile Detection -->
+    <script>
+        // Detect mobile and redirect or show scan button
+        function isMobile() {
+            return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        }
+    </script>
 </head>
 
 <body>
@@ -37,8 +44,25 @@
 
         <!-- Main Content -->
         <main class="main-content">
-            <!-- QR Code Section -->
-            <section class="qr-section">
+            <!-- Mobile Direct Scan Section (shown only on mobile) -->
+            <section class="mobile-scan-section" id="mobile-scan-section" style="display: none;">
+                <div class="mobile-scan-card">
+                    <h2>📱 Mobile Scanner</h2>
+                    <p>Tap below to start scanning documents directly on your phone</p>
+                    <button class="btn btn-primary btn-large" id="start-scan-btn">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path
+                                d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                            <circle cx="12" cy="13" r="4" />
+                        </svg>
+                        Start Scanning
+                    </button>
+                    <p class="mobile-hint">Your images will be available to download as PDF</p>
+                </div>
+            </section>
+
+            <!-- QR Code Section (shown only on desktop) -->
+            <section class="qr-section" id="qr-section">
                 <div class="qr-card">
                     <h2>Scan to Connect</h2>
                     <p class="qr-subtitle">Use your phone to scan this QR code and start capturing documents</p>

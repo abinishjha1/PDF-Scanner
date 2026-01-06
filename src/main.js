@@ -20,9 +20,38 @@ class PDFScanner {
     }
 
     async init() {
-        await this.generateQRCode();
+        // Check if on mobile
+        if (this.isMobile()) {
+            this.showMobileMode();
+        } else {
+            await this.generateQRCode();
+        }
+
         this.setupPolling();
         this.bindEvents();
+    }
+
+    isMobile() {
+        return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    }
+
+    showMobileMode() {
+        const qrSection = document.getElementById('qr-section');
+        const mobileScanSection = document.getElementById('mobile-scan-section');
+
+        if (qrSection) qrSection.style.display = 'none';
+        if (mobileScanSection) mobileScanSection.style.display = 'block';
+
+        // Set up start scan button
+        const startScanBtn = document.getElementById('start-scan-btn');
+        if (startScanBtn) {
+            startScanBtn.addEventListener('click', () => {
+                // Redirect to mobile.html with this session
+                window.location.href = `mobile.html?session=${this.sessionId}`;
+            });
+        }
+
+        this.updateConnectionStatus('ready');
     }
 
     async generateQRCode() {
