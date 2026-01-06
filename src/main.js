@@ -11,6 +11,7 @@ class PDFScanner {
         this.images = [];
         this.selectedImageId = null;
         this.pollInterval = null;
+        this.cropper = null;
 
         this.init();
     }
@@ -191,13 +192,61 @@ class PDFScanner {
 
     openModal(image) {
         this.selectedImageId = image.id;
-        document.getElementById('modal-image').src = image.data;
+        const modalImage = document.getElementById('modal-image');
+        modalImage.src = image.data;
         document.getElementById('image-modal').classList.add('active');
+
+        // Initialize Cropper after image loads
+        modalImage.onload = () => {
+            if (this.cropper) {
+                this.cropper.destroy();
+            }
+            this.cropper = new Cropper(modalImage, {
+                viewMode: 1,
+                dragMode: 'move',
+                aspectRatio: NaN,
+                autoCropArea: 0.9,
+                restore: false,
+                guides: true,
+                center: true,
+                highlight: false,
+                cropBoxMovable: true,
+                cropBoxResizable: true,
+                toggleDragModeOnDblclick: false,
+                background: false,
+            });
+        };
     }
 
     closeModal() {
         document.getElementById('image-modal').classList.remove('active');
+        if (this.cropper) {
+            this.cropper.destroy();
+            this.cropper = null;
+        }
         this.selectedImageId = null;
+    }
+
+    saveCroppedImage() {
+        if (!this.cropper || !this.selectedImageId) return;
+
+        const canvas = this.cropper.getCroppedCanvas({
+            maxWidth: 2000,
+            maxHeight: 2000,
+            imageSmoothingEnabled: true,
+            imageSmoothingQuality: 'high',
+        });
+
+        const croppedData = canvas.toDataURL('image/jpeg', 0.85);
+
+        // Update the image in our array
+        const image = this.images.find(img => img.id === this.selectedImageId);
+        if (image) {
+            image.data = croppedData;
+        }
+
+        this.closeModal();
+        this.renderGallery();
     }
 
     async generatePDF() {
@@ -266,6 +315,19 @@ class PDFScanner {
         document.getElementById('delete-image-btn').addEventListener('click', () => {
             if (this.selectedImageId) this.removeImage(this.selectedImageId);
         });
+
+        // Crop controls
+        document.getElementById('rotate-left-btn').addEventListener('click', () => {
+            if (this.cropper) this.cropper.rotate(-90);
+        });
+        document.getElementById('rotate-right-btn').addEventListener('click', () => {
+            if (this.cropper) this.cropper.rotate(90);
+        });
+        document.getElementById('reset-crop-btn').addEventListener('click', () => {
+            if (this.cropper) this.cropper.reset();
+        });
+        document.getElementById('save-crop-btn').addEventListener('click', () => this.saveCroppedImage());
+
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') this.closeModal();
         });

@@ -11,6 +11,9 @@
     <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
     <!-- QR Code library - browser version -->
     <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+    <!-- Cropper.js for image cropping -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js"></script>
     <!-- Supabase JS -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <!-- Mobile Detection -->
@@ -117,17 +120,39 @@
             </section>
         </main>
 
-        <!-- Image Preview Modal -->
+        <!-- Image Crop/Edit Modal -->
         <div class="modal" id="image-modal">
             <div class="modal-overlay"></div>
-            <div class="modal-content">
-                <button class="modal-close" id="modal-close">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <line x1="18" y1="6" x2="6" y2="18" />
-                        <line x1="6" y1="6" x2="18" y2="18" />
-                    </svg>
-                </button>
-                <img id="modal-image" src="" alt="Preview">
+            <div class="modal-content crop-modal-content">
+                <div class="crop-modal-header">
+                    <h3>Edit Image</h3>
+                    <button class="modal-close" id="modal-close">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="18" y1="6" x2="6" y2="18" />
+                            <line x1="6" y1="6" x2="18" y2="18" />
+                        </svg>
+                    </button>
+                </div>
+                <div class="crop-container">
+                    <img id="modal-image" src="" alt="Preview">
+                </div>
+                <div class="crop-tools">
+                    <button class="btn btn-secondary" id="rotate-left-btn" title="Rotate Left">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                            style="width:20px;height:20px;">
+                            <polyline points="1 4 1 10 7 10" />
+                            <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+                        </svg>
+                    </button>
+                    <button class="btn btn-secondary" id="rotate-right-btn" title="Rotate Right">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                            style="width:20px;height:20px;">
+                            <polyline points="23 4 23 10 17 10" />
+                            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+                        </svg>
+                    </button>
+                    <button class="btn btn-secondary" id="reset-crop-btn" title="Reset">Reset</button>
+                </div>
                 <div class="modal-actions">
                     <button class="btn btn-danger" id="delete-image-btn">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -135,6 +160,12 @@
                             <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
                         </svg>
                         Delete
+                    </button>
+                    <button class="btn btn-primary" id="save-crop-btn">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                        Save
                     </button>
                 </div>
             </div>
