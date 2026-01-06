@@ -1,17 +1,12 @@
 // PDF Scanner - Desktop Main JavaScript
-// Uses Supabase Database for image sync
-
-// Supabase configuration
-const SUPABASE_URL = 'https://pntieelizxhmezasqzed.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_UXZ8961wiUjnY5zRVGwymg__2twvxum';
+// Uses local server + WebSocket for real-time sync
 
 class PDFScanner {
     constructor() {
         this.sessionId = this.generateSessionId();
         this.images = [];
         this.selectedImageId = null;
-        this.pollInterval = null;
-        this.supabase = null;
+        this.ws = null;
 
         this.init();
     }
@@ -21,117 +16,85 @@ class PDFScanner {
     }
 
     async init() {
-        this.initSupabase();
-        await this.generateQRCode();
-        this.setupPolling();
+        await this.loadQRCode();
+        this.connectWebSocket();
         this.bindEvents();
     }
 
-    initSupabase() {
-        if (typeof supabase !== 'undefined' && supabase.createClient) {
-            try {
-                this.supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-                console.log('Supabase initialized');
-            } catch (err) {
-                console.warn('Supabase init failed:', err);
-            }
-        }
-    }
-
-    async generateQRCode() {
+    async loadQRCode() {
         const qrContainer = document.getElementById('qr-container');
         const mobileUrlElement = document.getElementById('mobile-url');
 
         try {
-            const baseUrl = window.location.origin;
-            const mobileUrl = `${baseUrl}/mobile.html?session=${this.sessionId}`;
+            const response = await fetch(`/api/qrcode/${this.sessionId}`);
+            const data = await response.json();
 
-            if (typeof qrcode !== 'undefined') {
-                const qr = qrcode(0, 'M');
-                qr.addData(mobileUrl);
-                qr.make();
-
+            if (data.qrCode) {
                 const qrImg = document.createElement('img');
-                qrImg.src = qr.createDataURL(8, 0);
+                qrImg.src = data.qrCode;
                 qrImg.alt = 'Scan to connect';
                 qrImg.style.width = '240px';
                 qrImg.style.height = '240px';
                 qrImg.style.borderRadius = '12px';
-                qrImg.style.filter = 'invert(1)';
 
                 qrContainer.innerHTML = '';
                 qrContainer.appendChild(qrImg);
-                mobileUrlElement.textContent = mobileUrl;
+                mobileUrlElement.textContent = data.mobileUrl;
+
+                console.log('Mobile URL:', data.mobileUrl);
                 this.updateConnectionStatus('ready');
-            } else {
-                throw new Error('QRCode library not loaded');
             }
         } catch (error) {
-            console.error('QR generation error:', error);
-            const baseUrl = window.location.origin;
-            const mobileUrl = `${baseUrl}/mobile.html?session=${this.sessionId}`;
+            console.error('QR load error:', error);
             qrContainer.innerHTML = `
         <div class="qr-error">
-          <p>Mobile URL:</p>
-          <p style="font-size: 0.7rem; word-break: break-all; margin-top: 8px;">${mobileUrl}</p>
+          <p style="color: #f00;">Server not running!</p>
+          <p style="font-size: 0.75rem;">Run: npm run dev</p>
         </div>
       `;
-            mobileUrlElement.textContent = mobileUrl;
         }
     }
 
-    setupPolling() {
-        // Poll every 2 seconds
-        this.pollInterval = setInterval(() => this.fetchImages(), 2000);
-        this.fetchImages();
-        this.updateConnectionStatus('connected');
+    connectWebSocket() {
+        const wsUrl = `ws://${window.location.host}?session=${this.sessionId}`;
+        console.log('Connecting to WebSocket:', wsUrl);
+
+        this.ws = new WebSocket(wsUrl);
+
+        this.ws.onopen = () => {
+            console.log('WebSocket connected');
+            this.updateConnectionStatus('connected');
+        };
+
+        this.ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            console.log('WebSocket message:', data);
+
+            if (data.type === 'init') {
+                this.images = data.images || [];
+                this.renderGallery();
+                this.updateControls();
+            } else if (data.type === 'new-image') {
+                this.addImage(data.image);
+            }
+        };
+
+        this.ws.onclose = () => {
+            console.log('WebSocket disconnected, reconnecting...');
+            this.updateConnectionStatus('disconnected');
+            setTimeout(() => this.connectWebSocket(), 3000);
+        };
+
+        this.ws.onerror = (error) => {
+            console.error('WebSocket error:', error);
+        };
     }
 
-    async fetchImages() {
-        try {
-            let fetchedImages = [];
-
-            if (this.supabase) {
-                const { data, error } = await this.supabase
-                    .from('scanner_images')
-                    .select('*')
-                    .eq('session_id', this.sessionId)
-                    .order('created_at', { ascending: true });
-
-                if (!error && data) {
-                    fetchedImages = data.map(row => ({
-                        id: row.id,
-                        data: row.image_data,
-                        timestamp: new Date(row.created_at).getTime()
-                    }));
-                }
-            }
-
-            // Also check localStorage as fallback
-            const localImages = JSON.parse(localStorage.getItem(`images_${this.sessionId}`) || '[]');
-
-            // Merge (prefer Supabase, add unique from localStorage)
-            const allImages = [...fetchedImages];
-            localImages.forEach(img => {
-                if (!allImages.some(i => i.timestamp === img.timestamp)) {
-                    allImages.push(img);
-                }
-            });
-
-            // Check for new images
-            if (allImages.length > this.images.length) {
-                this.images = allImages;
-                this.renderGallery();
-                this.updateControls();
-            }
-        } catch (err) {
-            // Fallback to localStorage
-            const localImages = JSON.parse(localStorage.getItem(`images_${this.sessionId}`) || '[]');
-            if (localImages.length > this.images.length) {
-                this.images = localImages;
-                this.renderGallery();
-                this.updateControls();
-            }
+    addImage(image) {
+        if (!this.images.find(img => img.id === image.id)) {
+            this.images.push(image);
+            this.renderGallery();
+            this.updateControls();
         }
     }
 
@@ -140,10 +103,10 @@ class PDFScanner {
         const statusDot = document.getElementById('status-dot');
 
         if (status === 'connected' || status === 'ready') {
-            statusText.textContent = 'Ready';
+            statusText.textContent = status === 'connected' ? 'Connected' : 'Ready';
             statusDot.classList.add('connected');
         } else {
-            statusText.textContent = 'Connecting...';
+            statusText.textContent = 'Disconnected';
             statusDot.classList.remove('connected');
         }
     }
@@ -158,7 +121,6 @@ class PDFScanner {
     clearAllImages() {
         if (confirm('Clear all images?')) {
             this.images = [];
-            localStorage.removeItem(`images_${this.sessionId}`);
             this.renderGallery();
             this.updateControls();
         }
@@ -181,7 +143,7 @@ class PDFScanner {
 
         galleryGrid.innerHTML = this.images.map((image, index) => `
       <div class="gallery-item fade-in" data-id="${image.id}">
-        <img src="${image.data}" alt="Document ${index + 1}" loading="lazy">
+        <img src="${image.url}" alt="Document ${index + 1}" loading="lazy">
         <div class="gallery-item-overlay">
           <div class="gallery-item-number">${index + 1}</div>
         </div>
@@ -190,7 +152,7 @@ class PDFScanner {
 
         galleryGrid.querySelectorAll('.gallery-item').forEach(item => {
             item.addEventListener('click', () => {
-                const image = this.images.find(img => img.id == item.dataset.id);
+                const image = this.images.find(img => img.id === item.dataset.id);
                 if (image) this.openModal(image);
             });
         });
@@ -202,7 +164,7 @@ class PDFScanner {
 
     openModal(image) {
         this.selectedImageId = image.id;
-        document.getElementById('modal-image').src = image.data;
+        document.getElementById('modal-image').src = image.url;
         document.getElementById('image-modal').classList.add('active');
     }
 
@@ -233,8 +195,9 @@ class PDFScanner {
             for (let i = 0; i < this.images.length; i++) {
                 if (i > 0) doc.addPage();
 
-                const image = this.images[i];
-                const imgProps = await this.getImageDimensions(image.data);
+                // Load image
+                const imgData = await this.loadImageAsDataURL(this.images[i].url);
+                const imgProps = await this.getImageDimensions(imgData);
 
                 const maxWidth = pageWidth - margin * 2;
                 const maxHeight = pageHeight - margin * 2;
@@ -248,16 +211,34 @@ class PDFScanner {
                 const x = (pageWidth - width) / 2;
                 const y = (pageHeight - height) / 2;
 
-                doc.addImage(image.data, 'JPEG', x, y, width, height);
+                doc.addImage(imgData, 'JPEG', x, y, width, height);
             }
 
             doc.save(`scanned-document-${new Date().toISOString().slice(0, 10)}.pdf`);
         } catch (error) {
+            console.error('PDF error:', error);
             alert('Failed to generate PDF: ' + error.message);
         } finally {
             btn.innerHTML = originalText;
             btn.disabled = false;
         }
+    }
+
+    loadImageAsDataURL(url) {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = img.width;
+                canvas.height = img.height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0);
+                resolve(canvas.toDataURL('image/jpeg', 0.8));
+            };
+            img.onerror = reject;
+            img.src = url;
+        });
     }
 
     getImageDimensions(dataUrl) {
@@ -279,9 +260,6 @@ class PDFScanner {
         });
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') this.closeModal();
-        });
-        window.addEventListener('beforeunload', () => {
-            if (this.pollInterval) clearInterval(this.pollInterval);
         });
     }
 }

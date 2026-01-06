@@ -1,16 +1,11 @@
 // PDF Scanner - Mobile Camera JavaScript
-// Uses Supabase Database for image storage
-
-// Supabase configuration
-const SUPABASE_URL = 'https://pntieelizxhmezasqzed.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_UXZ8961wiUjnY5zRVGwymg__2twvxum';
+// Uploads images to local server
 
 class MobileScanner {
     constructor() {
         this.sessionId = this.getSessionId();
         this.captureCount = 0;
         this.stream = null;
-        this.supabase = null;
 
         if (!this.sessionId) {
             this.showError('Invalid session. Please scan the QR code again.');
@@ -26,42 +21,8 @@ class MobileScanner {
     }
 
     async init() {
-        // Initialize Supabase
-        this.initSupabase();
-
-        // Start camera
         await this.startCamera();
         this.bindEvents();
-
-        // Load existing count
-        this.loadCaptureCount();
-    }
-
-    initSupabase() {
-        if (typeof supabase !== 'undefined' && supabase.createClient) {
-            try {
-                this.supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-                console.log('Supabase initialized');
-            } catch (err) {
-                console.warn('Supabase init failed:', err);
-            }
-        }
-    }
-
-    async loadCaptureCount() {
-        if (!this.supabase) return;
-
-        try {
-            const { count } = await this.supabase
-                .from('scanner_images')
-                .select('*', { count: 'exact', head: true })
-                .eq('session_id', this.sessionId);
-
-            this.captureCount = count || 0;
-            this.updateCaptureCount();
-        } catch (err) {
-            console.log('Count load skipped');
-        }
     }
 
     async startCamera() {
@@ -123,10 +84,12 @@ class MobileScanner {
         const ctx = canvas.getContext('2d');
         ctx.drawImage(video, 0, 0);
 
-        const imageData = canvas.toDataURL('image/jpeg', 0.6);
-
         this.showFlash();
-        this.saveImage(imageData);
+
+        // Convert to blob and upload
+        canvas.toBlob((blob) => {
+            this.uploadImage(blob);
+        }, 'image/jpeg', 0.8);
     }
 
     showFlash() {
@@ -136,34 +99,27 @@ class MobileScanner {
         setTimeout(() => flash.remove(), 300);
     }
 
-    async saveImage(imageData) {
+    async uploadImage(blob) {
         const uploadToast = document.getElementById('upload-toast');
         const successToast = document.getElementById('success-toast');
 
         uploadToast.classList.add('active');
 
         try {
-            if (this.supabase) {
-                // Save to Supabase
-                const { error } = await this.supabase
-                    .from('scanner_images')
-                    .insert({
-                        session_id: this.sessionId,
-                        image_data: imageData,
-                        created_at: new Date().toISOString()
-                    });
+            const formData = new FormData();
+            formData.append('image', blob, `capture-${Date.now()}.jpg`);
 
-                if (error) throw error;
-            } else {
-                // Fallback to localStorage
-                let images = JSON.parse(localStorage.getItem(`images_${this.sessionId}`) || '[]');
-                images.push({
-                    id: `img-${Date.now()}`,
-                    data: imageData,
-                    timestamp: Date.now()
-                });
-                localStorage.setItem(`images_${this.sessionId}`, JSON.stringify(images));
+            const response = await fetch(`/api/upload/${this.sessionId}`, {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) {
+                throw new Error('Upload failed');
             }
+
+            const result = await response.json();
+            console.log('Upload success:', result);
 
             this.captureCount++;
             this.updateCaptureCount();
@@ -173,35 +129,16 @@ class MobileScanner {
             setTimeout(() => successToast.classList.remove('active'), 2000);
 
         } catch (error) {
-            console.error('Save error:', error);
+            console.error('Upload error:', error);
             uploadToast.classList.remove('active');
-
-            // Try localStorage fallback
-            try {
-                let images = JSON.parse(localStorage.getItem(`images_${this.sessionId}`) || '[]');
-                images.push({
-                    id: `img-${Date.now()}`,
-                    data: imageData,
-                    timestamp: Date.now()
-                });
-                localStorage.setItem(`images_${this.sessionId}`, JSON.stringify(images));
-
-                this.captureCount++;
-                this.updateCaptureCount();
-                successToast.classList.add('active');
-                setTimeout(() => successToast.classList.remove('active'), 2000);
-            } catch (e) {
-                alert('Failed to save. Try again.');
-            }
+            alert('Failed to upload. Make sure you\'re on the same WiFi as the computer.');
         }
     }
 
     async handleFileSelect(files) {
         for (const file of files) {
             if (file.type.startsWith('image/')) {
-                const reader = new FileReader();
-                reader.onload = (e) => this.saveImage(e.target.result);
-                reader.readAsDataURL(file);
+                await this.uploadImage(file);
             }
         }
     }

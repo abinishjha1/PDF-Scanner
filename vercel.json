@@ -2,17 +2,5 @@
     "buildCommand": null,
     "outputDirectory": ".",
     "framework": null,
-    "installCommand": null,
-    "functions": {
-        "api/*.js": {
-            "memory": 256,
-            "maxDuration": 10
-        }
-    },
-    "rewrites": [
-        {
-            "source": "/api/(.*)",
-            "destination": "/api/$1"
-        }
-    ]
+    "installCommand": null
 }
