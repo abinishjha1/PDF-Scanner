@@ -7,11 +7,11 @@
     <title>PDF Scanner - Mobile</title>
     <link rel="stylesheet" href="src/mobile.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <!-- Cropper.js for image cropping -->
+    <!-- Cropper.js - defer loading for faster camera start -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js"></script>
-    <!-- jsPDF for local PDF generation -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js"></script>
+    <!-- jsPDF - defer loading -->
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <style>
         /* Crop Modal Styles */
         .crop-modal {
@@ -283,21 +283,25 @@
                 const captureBtn = document.getElementById('capture-btn');
 
                 try {
+                    // Use simpler constraints for faster camera start
                     this.stream = await navigator.mediaDevices.getUserMedia({
                         video: {
-                            facingMode: { ideal: 'environment' },
-                            width: { ideal: 1920 },
-                            height: { ideal: 1080 }
+                            facingMode: 'environment'
                         },
                         audio: false
                     });
 
                     video.srcObject = this.stream;
 
+                    // Enable capture button immediately
                     video.onloadedmetadata = () => {
                         loading.style.display = 'none';
                         captureBtn.disabled = false;
                     };
+
+                    // Play video in case autoplay is blocked
+                    video.play().catch(() => { });
+
                 } catch (err) {
                     console.error('Camera access error:', err);
                     loading.style.display = 'none';
