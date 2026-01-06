@@ -434,7 +434,8 @@
             }
 
             deleteImage(id) {
-                this.images = this.images.filter(img => img.id !== id);
+                // Use loose equality to handle string/number type mismatch
+                this.images = this.images.filter(img => img.id != id);
                 this.updateUI();
             }
 

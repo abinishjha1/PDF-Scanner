@@ -140,10 +140,11 @@ class PDFScanner {
     }
 
     removeImage(imageId) {
-        this.images = this.images.filter(img => img.id !== imageId);
+        // Use loose equality to handle string/number type mismatch
+        this.images = this.images.filter(img => img.id != imageId);
+        this.closeModal();
         this.renderGallery();
         this.updateControls();
-        this.closeModal();
     }
 
     clearAllImages() {
