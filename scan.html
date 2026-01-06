@@ -7,8 +7,132 @@
     <title>PDF Scanner - Mobile</title>
     <link rel="stylesheet" href="src/mobile.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Cropper.js for image cropping -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js"></script>
     <!-- jsPDF for local PDF generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        /* Crop Modal Styles */
+        .crop-modal {
+            position: fixed;
+            inset: 0;
+            z-index: 1000;
+            display: none;
+            background: #000;
+            flex-direction: column;
+        }
+
+        .crop-modal.active {
+            display: flex;
+        }
+
+        .crop-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .crop-header h3 {
+            font-size: 1rem;
+            font-weight: 500;
+            color: white;
+        }
+
+        .crop-container {
+            flex: 1;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .crop-container img {
+            max-width: 100%;
+            max-height: 100%;
+        }
+
+        .crop-actions {
+            display: flex;
+            gap: 12px;
+            padding: 16px;
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .crop-actions button {
+            flex: 1;
+            padding: 14px;
+            border: none;
+            border-radius: 12px;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+        }
+
+        .btn-cancel {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+        }
+
+        .btn-crop {
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: white;
+        }
+
+        .crop-tools {
+            display: flex;
+            gap: 8px;
+            padding: 12px 16px;
+            background: rgba(255, 255, 255, 0.05);
+            justify-content: center;
+        }
+
+        .crop-tool-btn {
+            width: 44px;
+            height: 44px;
+            border: none;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .crop-tool-btn:active {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .crop-tool-btn svg {
+            width: 24px;
+            height: 24px;
+        }
+
+        /* Gallery improvements */
+        .gallery-thumb {
+            position: relative;
+        }
+
+        .thumb-delete {
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            width: 20px;
+            height: 20px;
+            background: rgba(239, 68, 68, 0.9);
+            border: none;
+            border-radius: 50%;
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+        }
+    </style>
 </head>
 
 <body>
@@ -78,7 +202,7 @@
                     </svg>
                 </button>
             </div>
-            <p class="capture-hint">Capture images → Generate PDF</p>
+            <p class="capture-hint">Capture images → Crop → Generate PDF</p>
         </main>
 
         <!-- Image Gallery Preview -->
@@ -90,13 +214,11 @@
             <div class="gallery-scroll" id="gallery-scroll"></div>
         </div>
 
-        <!-- Upload Progress -->
+        <!-- Toast Messages -->
         <div class="upload-toast" id="upload-toast">
             <div class="upload-progress" id="upload-progress"></div>
             <span id="upload-message">Processing...</span>
         </div>
-
-        <!-- Success Toast -->
         <div class="success-toast" id="success-toast">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <polyline points="20 6 9 17 4 12" />
@@ -105,12 +227,47 @@
         </div>
     </div>
 
+    <!-- Crop Modal -->
+    <div class="crop-modal" id="crop-modal">
+        <div class="crop-header">
+            <h3>Adjust Image</h3>
+            <span id="crop-status">Drag to crop</span>
+        </div>
+        <div class="crop-container">
+            <img id="crop-image" src="" alt="Crop preview">
+        </div>
+        <div class="crop-tools">
+            <button class="crop-tool-btn" id="rotate-left-btn" title="Rotate Left">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="1 4 1 10 7 10" />
+                    <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+                </svg>
+            </button>
+            <button class="crop-tool-btn" id="rotate-right-btn" title="Rotate Right">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="23 4 23 10 17 10" />
+                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+                </svg>
+            </button>
+            <button class="crop-tool-btn" id="reset-btn" title="Reset">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="18" height="18" rx="2" />
+                </svg>
+            </button>
+        </div>
+        <div class="crop-actions">
+            <button class="btn-cancel" id="crop-cancel-btn">Cancel</button>
+            <button class="btn-crop" id="crop-save-btn">Save</button>
+        </div>
+    </div>
+
     <script>
-        // Standalone Mobile Scanner with local PDF generation
         class StandaloneMobileScanner {
             constructor() {
                 this.images = [];
                 this.stream = null;
+                this.cropper = null;
+                this.tempImageData = null;
                 this.init();
             }
 
@@ -145,15 +302,9 @@
                     console.error('Camera access error:', err);
                     loading.style.display = 'none';
                     error.style.display = 'flex';
-
-                    let errorMessage = 'Camera access denied';
-                    if (err.name === 'NotAllowedError') {
-                        errorMessage = 'Please allow camera access';
-                    } else if (err.name === 'NotFoundError') {
-                        errorMessage = 'No camera found';
-                    }
-
-                    document.getElementById('error-message').textContent = errorMessage;
+                    document.getElementById('error-message').textContent =
+                        err.name === 'NotAllowedError' ? 'Please allow camera access' :
+                            err.name === 'NotFoundError' ? 'No camera found' : 'Camera access denied';
                 }
             }
 
@@ -167,16 +318,9 @@
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(video, 0, 0);
 
-                const imageData = canvas.toDataURL('image/jpeg', 0.7);
-
-                this.images.push({
-                    id: Date.now(),
-                    data: imageData
-                });
-
+                this.tempImageData = canvas.toDataURL('image/jpeg', 0.9);
                 this.showFlash();
-                this.updateUI();
-                this.showSuccessToast('Photo captured!');
+                this.openCropModal(this.tempImageData);
             }
 
             showFlash() {
@@ -184,6 +328,66 @@
                 flash.className = 'flash-overlay';
                 document.body.appendChild(flash);
                 setTimeout(() => flash.remove(), 300);
+            }
+
+            openCropModal(imageData) {
+                const modal = document.getElementById('crop-modal');
+                const cropImage = document.getElementById('crop-image');
+
+                cropImage.src = imageData;
+                modal.classList.add('active');
+
+                // Wait for image to load then init cropper
+                cropImage.onload = () => {
+                    if (this.cropper) {
+                        this.cropper.destroy();
+                    }
+                    this.cropper = new Cropper(cropImage, {
+                        viewMode: 1,
+                        dragMode: 'move',
+                        aspectRatio: NaN, // Free aspect ratio
+                        autoCropArea: 0.9,
+                        restore: false,
+                        guides: true,
+                        center: true,
+                        highlight: false,
+                        cropBoxMovable: true,
+                        cropBoxResizable: true,
+                        toggleDragModeOnDblclick: false,
+                        background: false,
+                    });
+                };
+            }
+
+            closeCropModal() {
+                const modal = document.getElementById('crop-modal');
+                modal.classList.remove('active');
+                if (this.cropper) {
+                    this.cropper.destroy();
+                    this.cropper = null;
+                }
+            }
+
+            saveCroppedImage() {
+                if (!this.cropper) return;
+
+                const canvas = this.cropper.getCroppedCanvas({
+                    maxWidth: 2000,
+                    maxHeight: 2000,
+                    imageSmoothingEnabled: true,
+                    imageSmoothingQuality: 'high',
+                });
+
+                const croppedData = canvas.toDataURL('image/jpeg', 0.85);
+
+                this.images.push({
+                    id: Date.now(),
+                    data: croppedData
+                });
+
+                this.closeCropModal();
+                this.updateUI();
+                this.showSuccessToast('Image saved!');
             }
 
             updateUI() {
@@ -201,11 +405,39 @@
                     <div class="gallery-thumb" data-id="${img.id}">
                         <img src="${img.data}" alt="Image ${i + 1}">
                         <span class="thumb-number">${i + 1}</span>
+                        <button class="thumb-delete" data-id="${img.id}">×</button>
                     </div>
                 `).join('');
+
+                    // Add delete handlers
+                    scrollEl.querySelectorAll('.thumb-delete').forEach(btn => {
+                        btn.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            this.deleteImage(parseInt(btn.dataset.id));
+                        });
+                    });
+
+                    // Add click to edit handlers
+                    scrollEl.querySelectorAll('.gallery-thumb').forEach(thumb => {
+                        thumb.addEventListener('click', () => {
+                            const img = this.images.find(i => i.id == thumb.dataset.id);
+                            if (img) this.editImage(img);
+                        });
+                    });
                 } else {
                     galleryEl.style.display = 'none';
                 }
+            }
+
+            deleteImage(id) {
+                this.images = this.images.filter(img => img.id !== id);
+                this.updateUI();
+            }
+
+            editImage(img) {
+                // Store index for later replacement
+                this.editingImageId = img.id;
+                this.openCropModal(img.data);
             }
 
             showSuccessToast(message) {
@@ -220,13 +452,11 @@
                     if (file.type.startsWith('image/')) {
                         const reader = new FileReader();
                         reader.onload = (e) => {
-                            this.images.push({
-                                id: Date.now() + Math.random(),
-                                data: e.target.result
-                            });
-                            this.updateUI();
+                            this.tempImageData = e.target.result;
+                            this.openCropModal(this.tempImageData);
                         };
                         reader.readAsDataURL(file);
+                        break; // Handle one at a time for cropping
                     }
                 }
             }
@@ -297,6 +527,7 @@
             }
 
             bindEvents() {
+                // Camera
                 document.getElementById('capture-btn').addEventListener('click', () => this.captureImage());
                 document.getElementById('generate-pdf-btn').addEventListener('click', () => this.generatePDF());
                 document.getElementById('clear-all-btn').addEventListener('click', () => this.clearAll());
@@ -312,6 +543,35 @@
                     document.getElementById('camera-error').style.display = 'none';
                     document.getElementById('camera-loading').style.display = 'flex';
                     this.startCamera();
+                });
+
+                // Crop modal
+                document.getElementById('crop-cancel-btn').addEventListener('click', () => this.closeCropModal());
+                document.getElementById('crop-save-btn').addEventListener('click', () => {
+                    if (this.editingImageId) {
+                        // Replace existing image
+                        const canvas = this.cropper.getCroppedCanvas({ maxWidth: 2000, maxHeight: 2000 });
+                        const croppedData = canvas.toDataURL('image/jpeg', 0.85);
+                        const img = this.images.find(i => i.id === this.editingImageId);
+                        if (img) img.data = croppedData;
+                        this.editingImageId = null;
+                        this.closeCropModal();
+                        this.updateUI();
+                        this.showSuccessToast('Image updated!');
+                    } else {
+                        this.saveCroppedImage();
+                    }
+                });
+
+                // Rotate buttons
+                document.getElementById('rotate-left-btn').addEventListener('click', () => {
+                    if (this.cropper) this.cropper.rotate(-90);
+                });
+                document.getElementById('rotate-right-btn').addEventListener('click', () => {
+                    if (this.cropper) this.cropper.rotate(90);
+                });
+                document.getElementById('reset-btn').addEventListener('click', () => {
+                    if (this.cropper) this.cropper.reset();
                 });
 
                 window.addEventListener('beforeunload', () => {
