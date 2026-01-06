@@ -1,5 +1,9 @@
 // PDF Scanner - Mobile Camera JavaScript
-// Uploads images to local server
+// Uses Supabase for cross-device image sync
+
+// Supabase configuration
+const SUPABASE_URL = 'https://pntieelizxhmezasqzed.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_UXZ8961wiUjnY5zRVGwymg__2twvxum';
 
 class MobileScanner {
     constructor() {
@@ -23,6 +27,28 @@ class MobileScanner {
     async init() {
         await this.startCamera();
         this.bindEvents();
+        this.loadCaptureCount();
+    }
+
+    async loadCaptureCount() {
+        try {
+            const response = await fetch(
+                `${SUPABASE_URL}/rest/v1/scanner_images?session_id=eq.${this.sessionId}&select=id`,
+                {
+                    headers: {
+                        'apikey': SUPABASE_KEY,
+                        'Authorization': `Bearer ${SUPABASE_KEY}`
+                    }
+                }
+            );
+            if (response.ok) {
+                const data = await response.json();
+                this.captureCount = data.length;
+                this.updateCaptureCount();
+            }
+        } catch (err) {
+            console.log('Count load skipped');
+        }
     }
 
     async startCamera() {
@@ -57,8 +83,6 @@ class MobileScanner {
                 errorMessage = 'Please allow camera access';
             } else if (err.name === 'NotFoundError') {
                 errorMessage = 'No camera found';
-            } else if (err.name === 'NotReadableError') {
-                errorMessage = 'Camera in use by another app';
             }
 
             document.getElementById('error-message').textContent = errorMessage;
@@ -84,12 +108,11 @@ class MobileScanner {
         const ctx = canvas.getContext('2d');
         ctx.drawImage(video, 0, 0);
 
-        this.showFlash();
+        // Use lower quality for faster upload
+        const imageData = canvas.toDataURL('image/jpeg', 0.5);
 
-        // Convert to blob and upload
-        canvas.toBlob((blob) => {
-            this.uploadImage(blob);
-        }, 'image/jpeg', 0.8);
+        this.showFlash();
+        this.saveImage(imageData);
     }
 
     showFlash() {
@@ -99,27 +122,32 @@ class MobileScanner {
         setTimeout(() => flash.remove(), 300);
     }
 
-    async uploadImage(blob) {
+    async saveImage(imageData) {
         const uploadToast = document.getElementById('upload-toast');
         const successToast = document.getElementById('success-toast');
 
         uploadToast.classList.add('active');
 
         try {
-            const formData = new FormData();
-            formData.append('image', blob, `capture-${Date.now()}.jpg`);
-
-            const response = await fetch(`/api/upload/${this.sessionId}`, {
+            // Save to Supabase via REST API
+            const response = await fetch(`${SUPABASE_URL}/rest/v1/scanner_images`, {
                 method: 'POST',
-                body: formData
+                headers: {
+                    'Content-Type': 'application/json',
+                    'apikey': SUPABASE_KEY,
+                    'Authorization': `Bearer ${SUPABASE_KEY}`,
+                    'Prefer': 'return=minimal'
+                },
+                body: JSON.stringify({
+                    session_id: this.sessionId,
+                    image_data: imageData,
+                    created_at: new Date().toISOString()
+                })
             });
 
             if (!response.ok) {
-                throw new Error('Upload failed');
+                throw new Error(`Upload failed: ${response.status}`);
             }
-
-            const result = await response.json();
-            console.log('Upload success:', result);
 
             this.captureCount++;
             this.updateCaptureCount();
@@ -129,16 +157,18 @@ class MobileScanner {
             setTimeout(() => successToast.classList.remove('active'), 2000);
 
         } catch (error) {
-            console.error('Upload error:', error);
+            console.error('Save error:', error);
             uploadToast.classList.remove('active');
-            alert('Failed to upload. Make sure you\'re on the same WiFi as the computer.');
+            alert('Failed to save. Error: ' + error.message);
         }
     }
 
     async handleFileSelect(files) {
         for (const file of files) {
             if (file.type.startsWith('image/')) {
-                await this.uploadImage(file);
+                const reader = new FileReader();
+                reader.onload = (e) => this.saveImage(e.target.result);
+                reader.readAsDataURL(file);
             }
         }
     }

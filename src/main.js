@@ -1,12 +1,16 @@
 // PDF Scanner - Desktop Main JavaScript
-// Uses local server + WebSocket for real-time sync
+// Uses Supabase REST API for cross-device image sync
+
+// Supabase configuration
+const SUPABASE_URL = 'https://pntieelizxhmezasqzed.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_UXZ8961wiUjnY5zRVGwymg__2twvxum';
 
 class PDFScanner {
     constructor() {
         this.sessionId = this.generateSessionId();
         this.images = [];
         this.selectedImageId = null;
-        this.ws = null;
+        this.pollInterval = null;
 
         this.init();
     }
@@ -16,85 +20,79 @@ class PDFScanner {
     }
 
     async init() {
-        await this.loadQRCode();
-        this.connectWebSocket();
+        await this.generateQRCode();
+        this.setupPolling();
         this.bindEvents();
     }
 
-    async loadQRCode() {
+    async generateQRCode() {
         const qrContainer = document.getElementById('qr-container');
         const mobileUrlElement = document.getElementById('mobile-url');
 
         try {
-            const response = await fetch(`/api/qrcode/${this.sessionId}`);
-            const data = await response.json();
+            const baseUrl = window.location.origin;
+            const mobileUrl = `${baseUrl}/mobile.html?session=${this.sessionId}`;
 
-            if (data.qrCode) {
+            if (typeof qrcode !== 'undefined') {
+                const qr = qrcode(0, 'M');
+                qr.addData(mobileUrl);
+                qr.make();
+
                 const qrImg = document.createElement('img');
-                qrImg.src = data.qrCode;
+                qrImg.src = qr.createDataURL(8, 0);
                 qrImg.alt = 'Scan to connect';
                 qrImg.style.width = '240px';
                 qrImg.style.height = '240px';
                 qrImg.style.borderRadius = '12px';
+                qrImg.style.filter = 'invert(1)';
 
                 qrContainer.innerHTML = '';
                 qrContainer.appendChild(qrImg);
-                mobileUrlElement.textContent = data.mobileUrl;
-
-                console.log('Mobile URL:', data.mobileUrl);
+                mobileUrlElement.textContent = mobileUrl;
                 this.updateConnectionStatus('ready');
             }
         } catch (error) {
-            console.error('QR load error:', error);
-            qrContainer.innerHTML = `
-        <div class="qr-error">
-          <p style="color: #f00;">Server not running!</p>
-          <p style="font-size: 0.75rem;">Run: npm run dev</p>
-        </div>
-      `;
+            console.error('QR generation error:', error);
         }
     }
 
-    connectWebSocket() {
-        const wsUrl = `ws://${window.location.host}?session=${this.sessionId}`;
-        console.log('Connecting to WebSocket:', wsUrl);
-
-        this.ws = new WebSocket(wsUrl);
-
-        this.ws.onopen = () => {
-            console.log('WebSocket connected');
-            this.updateConnectionStatus('connected');
-        };
-
-        this.ws.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            console.log('WebSocket message:', data);
-
-            if (data.type === 'init') {
-                this.images = data.images || [];
-                this.renderGallery();
-                this.updateControls();
-            } else if (data.type === 'new-image') {
-                this.addImage(data.image);
-            }
-        };
-
-        this.ws.onclose = () => {
-            console.log('WebSocket disconnected, reconnecting...');
-            this.updateConnectionStatus('disconnected');
-            setTimeout(() => this.connectWebSocket(), 3000);
-        };
-
-        this.ws.onerror = (error) => {
-            console.error('WebSocket error:', error);
-        };
+    setupPolling() {
+        // Poll Supabase every 2 seconds
+        this.pollInterval = setInterval(() => this.fetchImages(), 2000);
+        this.fetchImages();
+        this.updateConnectionStatus('connected');
     }
 
-    addImage(image) {
-        if (!this.images.find(img => img.id === image.id)) {
-            this.images.push(image);
-            this.renderGallery();
-            this.updateControls();
+    async fetchImages() {
+        try {
+            const response = await fetch(
+                `${SUPABASE_URL}/rest/v1/scanner_images?session_id=eq.${this.sessionId}&order=created_at.asc`,
+                {
+                    headers: {
+                        'apikey': SUPABASE_KEY,
+                        'Authorization': `Bearer ${SUPABASE_KEY}`
+                    }
+                }
+            );
+
+            if (!response.ok) {
+                throw new Error(`Fetch failed: ${response.status}`);
+            }
+
+            const data = await response.json();
+
+            if (data.length > this.images.length) {
+                console.log('New images found:', data.length - this.images.length);
+                this.images = data.map(row => ({
+                    id: row.id,
+                    data: row.image_data,
+                    timestamp: new Date(row.created_at).getTime()
+                }));
+                this.renderGallery();
+                this.updateControls();
+            }
+        } catch (err) {
+            console.error('Fetch error:', err);
         }
     }
 
@@ -103,10 +101,10 @@ class PDFScanner {
         const statusDot = document.getElementById('status-dot');
 
         if (status === 'connected' || status === 'ready') {
-            statusText.textContent = status === 'connected' ? 'Connected' : 'Ready';
+            statusText.textContent = 'Ready';
             statusDot.classList.add('connected');
         } else {
-            statusText.textContent = 'Disconnected';
+            statusText.textContent = 'Connecting...';
             statusDot.classList.remove('connected');
         }
     }
@@ -143,7 +141,7 @@ class PDFScanner {
 
         galleryGrid.innerHTML = this.images.map((image, index) => `
       <div class="gallery-item fade-in" data-id="${image.id}">
-        <img src="${image.url}" alt="Document ${index + 1}" loading="lazy">
+        <img src="${image.data}" alt="Document ${index + 1}" loading="lazy">
         <div class="gallery-item-overlay">
           <div class="gallery-item-number">${index + 1}</div>
         </div>
@@ -152,7 +150,7 @@ class PDFScanner {
 
         galleryGrid.querySelectorAll('.gallery-item').forEach(item => {
             item.addEventListener('click', () => {
-                const image = this.images.find(img => img.id === item.dataset.id);
+                const image = this.images.find(img => img.id == item.dataset.id);
                 if (image) this.openModal(image);
             });
         });
@@ -164,7 +162,7 @@ class PDFScanner {
 
     openModal(image) {
         this.selectedImageId = image.id;
-        document.getElementById('modal-image').src = image.url;
+        document.getElementById('modal-image').src = image.data;
         document.getElementById('image-modal').classList.add('active');
     }
 
@@ -195,9 +193,7 @@ class PDFScanner {
             for (let i = 0; i < this.images.length; i++) {
                 if (i > 0) doc.addPage();
 
-                // Load image
-                const imgData = await this.loadImageAsDataURL(this.images[i].url);
-                const imgProps = await this.getImageDimensions(imgData);
+                const imgProps = await this.getImageDimensions(this.images[i].data);
 
                 const maxWidth = pageWidth - margin * 2;
                 const maxHeight = pageHeight - margin * 2;
@@ -211,7 +207,7 @@ class PDFScanner {
                 const x = (pageWidth - width) / 2;
                 const y = (pageHeight - height) / 2;
 
-                doc.addImage(imgData, 'JPEG', x, y, width, height);
+                doc.addImage(this.images[i].data, 'JPEG', x, y, width, height);
             }
 
             doc.save(`scanned-document-${new Date().toISOString().slice(0, 10)}.pdf`);
@@ -222,23 +218,6 @@ class PDFScanner {
             btn.innerHTML = originalText;
             btn.disabled = false;
         }
-    }
-
-    loadImageAsDataURL(url) {
-        return new Promise((resolve, reject) => {
-            const img = new Image();
-            img.crossOrigin = 'anonymous';
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                canvas.width = img.width;
-                canvas.height = img.height;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0);
-                resolve(canvas.toDataURL('image/jpeg', 0.8));
-            };
-            img.onerror = reject;
-            img.src = url;
-        });
     }
 
     getImageDimensions(dataUrl) {
@@ -260,6 +239,9 @@ class PDFScanner {
         });
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') this.closeModal();
+        });
+        window.addEventListener('beforeunload', () => {
+            if (this.pollInterval) clearInterval(this.pollInterval);
         });
     }
 }
