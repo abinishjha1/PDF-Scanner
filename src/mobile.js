@@ -108,7 +108,7 @@ class MobileScanner {
         const ctx = canvas.getContext('2d');
         ctx.drawImage(video, 0, 0);
 
-        const imageData = canvas.toDataURL('image/jpeg', 0.80);
+        const imageData = canvas.toDataURL('image/jpeg', 0.92);
 
         this.showFlash();
         this.saveImage(imageData);
