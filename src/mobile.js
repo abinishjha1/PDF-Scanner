@@ -58,13 +58,11 @@ class MobileScanner {
         const captureBtn = document.getElementById('capture-btn');
 
         try {
-            // Request highest quality camera settings for better PDF output
-            // Use only 'ideal' constraints to allow graceful fallback on lower-end devices
             this.stream = await navigator.mediaDevices.getUserMedia({
                 video: {
                     facingMode: { ideal: 'environment' },
-                    width: { ideal: 4096 },
-                    height: { ideal: 2160 }
+                    width: { ideal: 1920 },
+                    height: { ideal: 1080 }
                 },
                 audio: false
             });
