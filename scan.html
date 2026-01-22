@@ -283,10 +283,12 @@
                 const captureBtn = document.getElementById('capture-btn');
 
                 try {
-                    // Use simpler constraints for faster camera start
+                    // Request high resolution for better PDF quality
                     this.stream = await navigator.mediaDevices.getUserMedia({
                         video: {
-                            facingMode: 'environment'
+                            facingMode: 'environment',
+                            width: { ideal: 4096, min: 1920 },
+                            height: { ideal: 2160, min: 1080 }
                         },
                         audio: false
                     });
@@ -322,7 +324,7 @@
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(video, 0, 0);
 
-                this.tempImageData = canvas.toDataURL('image/jpeg', 0.9);
+                this.tempImageData = canvas.toDataURL('image/jpeg', 0.95);
                 this.showFlash();
                 this.openCropModal(this.tempImageData);
             }
@@ -376,13 +378,13 @@
                 if (!this.cropper) return;
 
                 const canvas = this.cropper.getCroppedCanvas({
-                    maxWidth: 2000,
-                    maxHeight: 2000,
+                    maxWidth: 4000,
+                    maxHeight: 4000,
                     imageSmoothingEnabled: true,
                     imageSmoothingQuality: 'high',
                 });
 
-                const croppedData = canvas.toDataURL('image/jpeg', 0.85);
+                const croppedData = canvas.toDataURL('image/jpeg', 0.95);
 
                 this.images.push({
                     id: Date.now(),
@@ -555,8 +557,8 @@
                 document.getElementById('crop-save-btn').addEventListener('click', () => {
                     if (this.editingImageId) {
                         // Replace existing image
-                        const canvas = this.cropper.getCroppedCanvas({ maxWidth: 2000, maxHeight: 2000 });
-                        const croppedData = canvas.toDataURL('image/jpeg', 0.85);
+                        const canvas = this.cropper.getCroppedCanvas({ maxWidth: 4000, maxHeight: 4000 });
+                        const croppedData = canvas.toDataURL('image/jpeg', 0.95);
                         const img = this.images.find(i => i.id === this.editingImageId);
                         if (img) img.data = croppedData;
                         this.editingImageId = null;

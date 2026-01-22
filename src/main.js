@@ -232,13 +232,13 @@ class PDFScanner {
         if (!this.cropper || !this.selectedImageId) return;
 
         const canvas = this.cropper.getCroppedCanvas({
-            maxWidth: 2000,
-            maxHeight: 2000,
+            maxWidth: 4000,
+            maxHeight: 4000,
             imageSmoothingEnabled: true,
             imageSmoothingQuality: 'high',
         });
 
-        const croppedData = canvas.toDataURL('image/jpeg', 0.85);
+        const croppedData = canvas.toDataURL('image/jpeg', 0.95);
 
         // Update the image in our array
         const image = this.images.find(img => img.id === this.selectedImageId);

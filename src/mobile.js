@@ -58,11 +58,12 @@ class MobileScanner {
         const captureBtn = document.getElementById('capture-btn');
 
         try {
+            // Request highest quality camera settings for better PDF output
             this.stream = await navigator.mediaDevices.getUserMedia({
                 video: {
                     facingMode: { ideal: 'environment' },
-                    width: { ideal: 1920 },
-                    height: { ideal: 1080 }
+                    width: { ideal: 4096, min: 1920 },
+                    height: { ideal: 2160, min: 1080 }
                 },
                 audio: false
             });
@@ -108,8 +109,8 @@ class MobileScanner {
         const ctx = canvas.getContext('2d');
         ctx.drawImage(video, 0, 0);
 
-        // Use lower quality for faster upload
-        const imageData = canvas.toDataURL('image/jpeg', 0.5);
+        // Use high quality JPEG for better PDF output
+        const imageData = canvas.toDataURL('image/jpeg', 0.92);
 
         this.showFlash();
         this.saveImage(imageData);
