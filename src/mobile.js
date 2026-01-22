@@ -58,18 +58,42 @@ class MobileScanner {
         const captureBtn = document.getElementById('capture-btn');
 
         try {
+            // First, get basic camera stream to detect capabilities
             this.stream = await navigator.mediaDevices.getUserMedia({
                 video: {
-                    facingMode: { ideal: 'environment' },
-                    width: { ideal: 1920 },
-                    height: { ideal: 1080 }
+                    facingMode: { ideal: 'environment' }
                 },
                 audio: false
             });
 
+            // Get the video track to check its capabilities
+            const track = this.stream.getVideoTracks()[0];
+
+            // Try to get maximum supported resolution
+            if (track.getCapabilities) {
+                const capabilities = track.getCapabilities();
+                const maxWidth = capabilities.width?.max || 1920;
+                const maxHeight = capabilities.height?.max || 1080;
+
+                console.log(`Camera max resolution: ${maxWidth}x${maxHeight}`);
+
+                // Stop current stream and restart with max resolution
+                track.stop();
+
+                this.stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: { ideal: 'environment' },
+                        width: { ideal: maxWidth },
+                        height: { ideal: maxHeight }
+                    },
+                    audio: false
+                });
+            }
+
             video.srcObject = this.stream;
 
             video.onloadedmetadata = () => {
+                console.log(`Actual video size: ${video.videoWidth}x${video.videoHeight}`);
                 loading.style.display = 'none';
                 captureBtn.disabled = false;
             };
