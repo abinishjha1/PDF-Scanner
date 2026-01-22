@@ -284,11 +284,12 @@
 
                 try {
                     // Request high resolution for better PDF quality
+                    // Use only 'ideal' constraints to allow graceful fallback
                     this.stream = await navigator.mediaDevices.getUserMedia({
                         video: {
                             facingMode: 'environment',
-                            width: { ideal: 4096, min: 1920 },
-                            height: { ideal: 2160, min: 1080 }
+                            width: { ideal: 4096 },
+                            height: { ideal: 2160 }
                         },
                         audio: false
                     });
