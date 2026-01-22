@@ -285,7 +285,9 @@
                 try {
                     this.stream = await navigator.mediaDevices.getUserMedia({
                         video: {
-                            facingMode: 'environment'
+                            facingMode: 'environment',
+                            width: { ideal: 2560 },
+                            height: { ideal: 1440 }
                         },
                         audio: false
                     });
