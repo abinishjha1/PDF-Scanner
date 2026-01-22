@@ -282,35 +282,45 @@
                 const error = document.getElementById('camera-error');
                 const captureBtn = document.getElementById('capture-btn');
 
-                try {
-                    this.stream = await navigator.mediaDevices.getUserMedia({
-                        video: {
-                            facingMode: 'environment',
-                            width: { ideal: 2560 },
-                            height: { ideal: 1440 }
-                        },
-                        audio: false
-                    });
+                // Try different resolutions with fallback
+                const resolutions = [
+                    { width: 3840, height: 2160 }, // 4K
+                    { width: 2560, height: 1440 }, // QHD
+                    { width: 1920, height: 1080 }, // Full HD
+                    { width: 1280, height: 720 }   // HD fallback
+                ];
 
-                    video.srcObject = this.stream;
+                for (const res of resolutions) {
+                    try {
+                        this.stream = await navigator.mediaDevices.getUserMedia({
+                            video: {
+                                facingMode: 'environment',
+                                width: { ideal: res.width },
+                                height: { ideal: res.height }
+                            },
+                            audio: false
+                        });
 
-                    // Enable capture button immediately
-                    video.onloadedmetadata = () => {
-                        loading.style.display = 'none';
-                        captureBtn.disabled = false;
-                    };
+                        video.srcObject = this.stream;
+                        console.log(`Camera started at ${res.width}x${res.height}`);
 
-                    // Play video in case autoplay is blocked
-                    video.play().catch(() => { });
+                        video.onloadedmetadata = () => {
+                            console.log(`Actual video size: ${video.videoWidth}x${video.videoHeight}`);
+                            loading.style.display = 'none';
+                            captureBtn.disabled = false;
+                        };
 
-                } catch (err) {
-                    console.error('Camera access error:', err);
-                    loading.style.display = 'none';
-                    error.style.display = 'flex';
-                    document.getElementById('error-message').textContent =
-                        err.name === 'NotAllowedError' ? 'Please allow camera access' :
-                            err.name === 'NotFoundError' ? 'No camera found' : 'Camera access denied';
+                        video.play().catch(() => { });
+                        return; // Success
+                    } catch (err) {
+                        console.log(`Resolution ${res.width}x${res.height} failed, trying lower...`);
+                    }
                 }
+
+                // All resolutions failed
+                loading.style.display = 'none';
+                error.style.display = 'flex';
+                document.getElementById('error-message').textContent = 'Camera access denied';
             }
 
             captureImage() {
@@ -320,10 +330,12 @@
                 canvas.width = video.videoWidth;
                 canvas.height = video.videoHeight;
 
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(video, 0, 0);
+                const ctx = canvas.getContext('2d', { willReadFrequently: true, alpha: false });
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-                this.tempImageData = canvas.toDataURL('image/jpeg', 0.95);
+                this.tempImageData = canvas.toDataURL('image/jpeg', 0.98);
                 this.showFlash();
                 this.openCropModal(this.tempImageData);
             }
