@@ -57,43 +57,36 @@ class MobileScanner {
         const error = document.getElementById('camera-error');
         const captureBtn = document.getElementById('capture-btn');
 
-        // Try different resolutions with fallback
-        const resolutions = [
-            { width: 3840, height: 2160 }, // 4K
-            { width: 2560, height: 1440 }, // QHD
-            { width: 1920, height: 1080 }, // Full HD
-            { width: 1280, height: 720 }   // HD fallback
-        ];
+        try {
+            this.stream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                    facingMode: { ideal: 'environment' },
+                    width: { ideal: 1920 },
+                    height: { ideal: 1080 }
+                },
+                audio: false
+            });
 
-        for (const res of resolutions) {
-            try {
-                this.stream = await navigator.mediaDevices.getUserMedia({
-                    video: {
-                        facingMode: { ideal: 'environment' },
-                        width: { ideal: res.width },
-                        height: { ideal: res.height }
-                    },
-                    audio: false
-                });
+            video.srcObject = this.stream;
 
-                video.srcObject = this.stream;
-                console.log(`Camera started at ${res.width}x${res.height}`);
+            video.onloadedmetadata = () => {
+                loading.style.display = 'none';
+                captureBtn.disabled = false;
+            };
+        } catch (err) {
+            console.error('Camera access error:', err);
+            loading.style.display = 'none';
+            error.style.display = 'flex';
 
-                video.onloadedmetadata = () => {
-                    console.log(`Actual video size: ${video.videoWidth}x${video.videoHeight}`);
-                    loading.style.display = 'none';
-                    captureBtn.disabled = false;
-                };
-                return; // Success, exit loop
-            } catch (err) {
-                console.log(`Resolution ${res.width}x${res.height} failed, trying lower...`);
+            let errorMessage = 'Camera access denied';
+            if (err.name === 'NotAllowedError') {
+                errorMessage = 'Please allow camera access';
+            } else if (err.name === 'NotFoundError') {
+                errorMessage = 'No camera found';
             }
-        }
 
-        // All resolutions failed
-        loading.style.display = 'none';
-        error.style.display = 'flex';
-        document.getElementById('error-message').textContent = 'Camera access denied';
+            document.getElementById('error-message').textContent = errorMessage;
+        }
     }
 
     showError(message) {
@@ -109,21 +102,13 @@ class MobileScanner {
         const video = document.getElementById('camera-video');
         const canvas = document.getElementById('capture-canvas');
 
-        // Use full video resolution
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
 
-        // High quality canvas rendering
-        const ctx = canvas.getContext('2d', {
-            willReadFrequently: true,
-            alpha: false
-        });
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = 'high';
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0);
 
-        // Maximum quality JPEG
-        const imageData = canvas.toDataURL('image/jpeg', 0.98);
+        const imageData = canvas.toDataURL('image/jpeg', 0.80);
 
         this.showFlash();
         this.saveImage(imageData);
